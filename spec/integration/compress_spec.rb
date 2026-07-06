@@ -31,6 +31,23 @@ RSpec.describe "bin/compress" do
     expect(updated.bytesize).to be < original.bytesize * 0.35
   end
 
+  it "compresses failed tool calls (PostToolUseFailure payload with error field)" do
+    payload = {
+      "tool_name" => "Bash",
+      "hook_event_name" => "PostToolUseFailure",
+      "tool_input" => { "command" => "bundle exec rspec" },
+      "error" => "Exit code 1\n\n" + fixture("rspec_failures.txt")
+    }
+    stdout, _, status = run_hook(payload)
+
+    expect(status.exitstatus).to eq(0)
+    result = JSON.parse(stdout)
+    expect(result.dig("hookSpecificOutput", "hookEventName")).to eq("PostToolUseFailure")
+    updated = result.dig("hookSpecificOutput", "updatedToolOutput")
+    expect(updated).to start_with("Exit code 1\n")
+    expect(updated).to include("3 failures")
+  end
+
   it "compresses a rubocop run" do
     stdout, _, status = run_hook(payload_for("bin/rubocop app/", fixture("rubocop_offenses.txt")))
 

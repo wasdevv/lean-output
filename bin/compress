@@ -1,16 +1,25 @@
 #!/usr/bin/env ruby
 # PostToolUse hook entry point. Fail-safe by design: any error means
 # passthrough (exit 0, no stdout) so a bug here can never break a session.
+# Set LEAN_OUTPUT_DEBUG=/some/file to log payloads and decisions.
 
 require "json"
 require_relative "../lib/lean_output"
 
+def debug(message)
+  return unless ENV["LEAN_OUTPUT_DEBUG"]
+
+  File.write(ENV["LEAN_OUTPUT_DEBUG"], "[#{Time.now}] #{message}\n", mode: "a")
+end
+
 begin
-  payload = JSON.parse($stdin.read)
-  result = LeanOutput::Runner.call(payload)
+  input = $stdin.read
+  debug("payload: #{input[0, 2000]}")
+  result = LeanOutput::Runner.call(JSON.parse(input))
+  debug(result ? "compressed (#{result.dig("hookSpecificOutput", "updatedToolOutput").bytesize} bytes)" : "passthrough")
   puts JSON.generate(result) if result
-rescue StandardError
-  # passthrough
+rescue StandardError => e
+  debug("error: #{e.class}: #{e.message}")
 end
 
 exit 0

@@ -47,7 +47,7 @@ Requires Ruby ≥ 3.0 on your PATH. The hook runs on pure stdlib — no gems, no
 
 ## How it works
 
-A `PostToolUse` hook intercepts every Bash tool result. A detector matches the command (`rspec` / `rubocop`) **and** sniffs the output for the tool's summary line — both must agree, otherwise nothing happens. When a compressor applies:
+Hooks on `PostToolUse` **and** `PostToolUseFailure` intercept every Bash tool result — the failure event matters most, since a failing suite exits nonzero and never reaches `PostToolUse`. A detector matches the command (`rspec` / `rubocop`) **and** sniffs the output for the tool's summary line — both must agree, otherwise nothing happens. When a compressor applies:
 
 - **RSpec** — keeps the summary, every failure (description, `Failure/Error` source, expectation/exception message, first project frame, rerun location). Drops dots, seeds, profiling, coverage noise, gem/support frames and diff blocks.
 - **RuboCop** — keeps the summary and every offense (`line:col`, cop, message) grouped by file. Drops code excerpts, carets and progress output.
@@ -69,6 +69,10 @@ bundle install
 bundle exec rspec   # golden tests over real captured fixtures — no mocks
 bin/bench           # savings table + zero-loss check
 ```
+
+Set `LEAN_OUTPUT_DEBUG=/some/file` to log every payload and compress/passthrough decision.
+
+Troubleshooting: if the hook never fires, check that your project is trusted and that `.claude/settings*.json` files are valid — Claude Code silently disables hooks for untrusted projects and skips settings files that fail validation.
 
 ---
 

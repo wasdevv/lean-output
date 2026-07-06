@@ -1,0 +1,46 @@
+Inspecting 18 files
+..........C.......
+
+Offenses:
+
+app/models/lean_output_bad_tmp.rb:2:24: C: [Correctable] Layout/SpaceInsideParens: Space inside parentheses detected.
+    def badly_indented( x )
+                       ^
+app/models/lean_output_bad_tmp.rb:2:26: C: [Correctable] Layout/SpaceInsideParens: Space inside parentheses detected.
+    def badly_indented( x )
+                         ^
+app/models/lean_output_bad_tmp.rb:4:16: C: [Correctable] Layout/SpaceAfterComma: Space missing after comma.
+      arr = [ 1,2 ,3 ]
+               ^
+app/models/lean_output_bad_tmp.rb:4:18: C: [Correctable] Layout/SpaceBeforeComma: Space found before comma.
+      arr = [ 1,2 ,3 ]
+                 ^
+app/models/lean_output_bad_tmp.rb:4:19: C: [Correctable] Layout/SpaceAfterComma: Space missing after comma.
+      arr = [ 1,2 ,3 ]
+                  ^
+app/models/lean_output_bad_tmp.rb:5:11: C: [Correctable] Layout/SpaceInsideHashLiteralBraces: Space inside { missing.
+      h = {a: 1 , b: 2}
+          ^
+app/models/lean_output_bad_tmp.rb:5:16: C: [Correctable] Layout/SpaceBeforeComma: Space found before comma.
+      h = {a: 1 , b: 2}
+               ^
+app/models/lean_output_bad_tmp.rb:5:23: C: [Correctable] Layout/SpaceInsideHashLiteralBraces: Space inside } missing.
+      h = {a: 1 , b: 2}
+                      ^
+app/models/lean_output_bad_tmp.rb:9:11: C: [Correctable] Style/RedundantReturn: Redundant return detected.
+          return y
+          ^^^^^^
+app/models/lean_output_bad_tmp.rb:11:13: C: [Correctable] Style/RedundantReturn: Redundant return detected.
+            return x   
+            ^^^^^^
+app/models/lean_output_bad_tmp.rb:11:21: C: [Correctable] Layout/TrailingWhitespace: Trailing whitespace detected.
+            return x   
+                    ^^^
+app/models/lean_output_bad_tmp.rb:15:16: C: [Correctable] Layout/TrailingWhitespace: Trailing whitespace detected.
+     "trailing"   
+               ^^^
+app/models/lean_output_bad_tmp.rb:17:4: C: [Correctable] Layout/TrailingWhitespace: Trailing whitespace detected.
+end   
+   ^^^
+
+18 files inspected, 13 offenses detected, 13 offenses autocorrectable

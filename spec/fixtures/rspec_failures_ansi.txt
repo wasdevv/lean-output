@@ -1,0 +1,101 @@
+
+Randomized with seed 38890
+[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[31mF[0m[31mF[0m[31mF[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m
+
+Failures:
+
+  1) LeanOutput fixture raises through gem frames
+     [31mFailure/Error: User.find(-1)[0m
+     [31m[0m
+     [31mActiveRecord::RecordNotFound:[0m
+     [31m  Couldn't find User with 'id'=-1[0m
+     [36m# ./spec/lean_output_fixture_tmp_spec.rb:10:in 'block (2 levels) in <top (required)>'[0m
+     [36m# ./spec/support/vcr.rb:20:in 'block (3 levels) in <top (required)>'[0m
+     [36m# ./spec/support/vcr.rb:19:in 'block (2 levels) in <top (required)>'[0m
+
+  2) LeanOutput fixture fails with a long diff
+     [31mFailure/Error: expect({ a: 1, b: 2, c: [1, 2, 3] }).to eq({ a: 1, b: 3, c: [1, 2, 4] })[0m
+     [31m[0m
+     [31m  expected: {a: 1, b: 3, c: [1, 2, 4]}[0m
+     [31m       got: {a: 1, b: 2, c: [1, 2, 3]}[0m
+     [31m[0m
+     [31m  (compared using ==)[0m
+     [31m[0m
+     [31m  Diff:[0m[0m
+     [31m  [0m[34m@@ -1,3 +1,3 @@[0m
+     [31m  [0m[0m :a => 1,[0m
+     [31m  [0m[31m-:b => 3,[0m
+     [31m  [0m[31m-:c => [1, 2, 4],[0m
+     [31m  [0m[32m+:b => 2,[0m
+     [31m  [0m[32m+:c => [1, 2, 3],[0m
+     [31m  [0m[0m
+     [36m# ./spec/lean_output_fixture_tmp_spec.rb:14:in 'block (2 levels) in <top (required)>'[0m
+     [36m# ./spec/support/vcr.rb:20:in 'block (3 levels) in <top (required)>'[0m
+     [36m# ./spec/support/vcr.rb:19:in 'block (2 levels) in <top (required)>'[0m
+
+  3) LeanOutput fixture fails on expectation mismatch
+     [31mFailure/Error: expect(user.email_address).to eq("other@y.com")[0m
+     [31m[0m
+     [31m  expected: "other@y.com"[0m
+     [31m       got: "x@y.com"[0m
+     [31m[0m
+     [31m  (compared using ==)[0m
+     [36m# ./spec/lean_output_fixture_tmp_spec.rb:6:in 'block (2 levels) in <top (required)>'[0m
+     [36m# ./spec/support/vcr.rb:20:in 'block (3 levels) in <top (required)>'[0m
+     [36m# ./spec/support/vcr.rb:19:in 'block (2 levels) in <top (required)>'[0m
+
+Top 10 slowest examples (0.79249 seconds, 42.0% of total time):
+  User validations is expected to validate that :email_address is case-insensitively unique
+    [1m0.17248[0m [1mseconds[0m ./spec/models/user_spec.rb:20
+  User scopes .confirmed includes users with confirmed_at set
+    [1m0.09947[0m [1mseconds[0m ./spec/models/user_spec.rb:63
+  User scopes .locked excludes users whose lock has expired
+    [1m0.09042[0m [1mseconds[0m ./spec/models/user_spec.rb:80
+  User validations rejects weak passwords
+    [1m0.08177[0m [1mseconds[0m ./spec/models/user_spec.rb:30
+  Workspace dependent: :destroy cascades destroys child accounts when workspace is destroyed
+    [1m0.07254[0m [1mseconds[0m ./spec/models/workspace_spec.rb:64
+  User scopes .locked includes only users currently within the lock window
+    [1m0.05829[0m [1mseconds[0m ./spec/models/user_spec.rb:76
+  Session predicates #sudo? returns false when sudo_until is in the past
+    [1m0.05826[0m [1mseconds[0m ./spec/models/session_spec.rb:65
+  User scopes .unconfirmed includes only users with confirmed_at nil
+    [1m0.05802[0m [1mseconds[0m ./spec/models/user_spec.rb:70
+  User token generation invalidates the token when the email_address changes
+    [1m0.05078[0m [1mseconds[0m ./spec/models/user_spec.rb:132
+  AuthEvent user association nullifies user_id when the user is destroyed
+    [1m0.05047[0m [1mseconds[0m ./spec/models/auth_event_spec.rb:66
+
+Top 8 slowest example groups:
+  Session
+    [1m0.02642[0m [1mseconds[0m average (0.29067 seconds / 11 examples) ./spec/models/session_spec.rb:5
+  User
+    [1m0.0264[0m [1mseconds[0m average (0.79208 seconds / 30 examples) ./spec/models/user_spec.rb:5
+  WorkspaceMembership
+    [1m0.01503[0m [1mseconds[0m average (0.16536 seconds / 11 examples) ./spec/models/workspace_membership_spec.rb:5
+  Workspace
+    [1m0.01054[0m [1mseconds[0m average (0.21083 seconds / 20 examples) ./spec/models/workspace_spec.rb:5
+  DomainEvent
+    [1m0.00963[0m [1mseconds[0m average (0.10591 seconds / 11 examples) ./spec/models/domain_event_spec.rb:5
+  AuthEvent
+    [1m0.00791[0m [1mseconds[0m average (0.08701 seconds / 11 examples) ./spec/models/auth_event_spec.rb:5
+  PasswordStrengthValidator
+    [1m0.00433[0m [1mseconds[0m average (0.03462 seconds / 8 examples) ./spec/validators/password_strength_validator_spec.rb:5
+  LeanOutput fixture
+    [1m0.00236[0m [1mseconds[0m average (0.00946 seconds / 4 examples) ./spec/lean_output_fixture_tmp_spec.rb:3
+
+Finished in 1.89 seconds (files took 1.88 seconds to load)
+[31m106 examples, 3 failures[0m
+
+Failed examples:
+
+[31mrspec ./spec/lean_output_fixture_tmp_spec.rb:9[0m [36m# LeanOutput fixture raises through gem frames[0m
+[31mrspec ./spec/lean_output_fixture_tmp_spec.rb:13[0m [36m# LeanOutput fixture fails with a long diff[0m
+[31mrspec ./spec/lean_output_fixture_tmp_spec.rb:4[0m [36m# LeanOutput fixture fails on expectation mismatch[0m
+
+Randomized with seed 38890
+
+Coverage report generated for RSpec to /home/was/projetos/pipeline_hq/coverage.
+Line Coverage: 8.62% (183 / 2124)
+Branch Coverage: 35.0% (7 / 20)
+Stopped processing SimpleCov as a previous error not related to SimpleCov has been detected

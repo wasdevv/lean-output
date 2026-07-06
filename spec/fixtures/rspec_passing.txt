@@ -1,0 +1,50 @@
+
+Randomized with seed 24941
+......................................................................................................
+
+Top 10 slowest examples (0.8424 seconds, 44.6% of total time):
+  Workspace slug uniqueness enforced at the DB level raises on duplicate slug bypassing model validations
+    0.19116 seconds ./spec/models/workspace_spec.rb:53
+  AuthEvent user association nullifies user_id when the user is destroyed
+    0.09126 seconds ./spec/models/auth_event_spec.rb:66
+  Workspace dependent: :destroy cascades destroys child accounts when workspace is destroyed
+    0.08981 seconds ./spec/models/workspace_spec.rb:64
+  User scopes .unconfirmed includes only users with confirmed_at nil
+    0.08586 seconds ./spec/models/user_spec.rb:70
+  Workspace validations rejects slugs with spaces
+    0.08476 seconds ./spec/models/workspace_spec.rb:33
+  User scopes .confirmed includes users with confirmed_at set
+    0.06648 seconds ./spec/models/user_spec.rb:63
+  Workspace#members through :workspace_memberships returns users with a membership
+    0.06173 seconds ./spec/models/workspace_spec.rb:75
+  User scopes .locked includes only users currently within the lock window
+    0.06113 seconds ./spec/models/user_spec.rb:76
+  User scopes .locked excludes users whose lock has expired
+    0.06018 seconds ./spec/models/user_spec.rb:80
+  User validations is expected to validate that :email_address cannot be empty/falsy
+    0.05005 seconds ./spec/models/user_spec.rb:19
+
+Top 7 slowest example groups:
+  Workspace
+    0.02627 seconds average (0.5254 seconds / 20 examples) ./spec/models/workspace_spec.rb:5
+  Session
+    0.01959 seconds average (0.21549 seconds / 11 examples) ./spec/models/session_spec.rb:5
+  User
+    0.0182 seconds average (0.54612 seconds / 30 examples) ./spec/models/user_spec.rb:5
+  WorkspaceMembership
+    0.01251 seconds average (0.13757 seconds / 11 examples) ./spec/models/workspace_membership_spec.rb:5
+  AuthEvent
+    0.01207 seconds average (0.13281 seconds / 11 examples) ./spec/models/auth_event_spec.rb:5
+  DomainEvent
+    0.00946 seconds average (0.1041 seconds / 11 examples) ./spec/models/domain_event_spec.rb:5
+  PasswordStrengthValidator
+    0.00593 seconds average (0.04748 seconds / 8 examples) ./spec/validators/password_strength_validator_spec.rb:5
+
+Finished in 1.89 seconds (files took 1.79 seconds to load)
+102 examples, 0 failures
+
+Randomized with seed 24941
+
+Coverage report generated for RSpec to /home/was/projetos/pipeline_hq/coverage.
+Line Coverage: 8.62% (183 / 2124)
+Branch Coverage: 35.0% (7 / 20)

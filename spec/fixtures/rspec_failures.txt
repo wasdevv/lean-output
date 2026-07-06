@@ -1,0 +1,100 @@
+
+Randomized with seed 32072
+....................FFF...................................................................................
+
+Failures:
+
+  1) LeanOutput fixture fails on expectation mismatch
+     Failure/Error: expect(user.email_address).to eq("other@y.com")
+
+       expected: "other@y.com"
+            got: "x@y.com"
+
+       (compared using ==)
+     # ./spec/lean_output_fixture_tmp_spec.rb:6:in 'block (2 levels) in <top (required)>'
+     # ./spec/support/vcr.rb:20:in 'block (3 levels) in <top (required)>'
+     # ./spec/support/vcr.rb:19:in 'block (2 levels) in <top (required)>'
+
+  2) LeanOutput fixture raises through gem frames
+     Failure/Error: User.find(-1)
+
+     ActiveRecord::RecordNotFound:
+       Couldn't find User with 'id'=-1
+     # ./spec/lean_output_fixture_tmp_spec.rb:10:in 'block (2 levels) in <top (required)>'
+     # ./spec/support/vcr.rb:20:in 'block (3 levels) in <top (required)>'
+     # ./spec/support/vcr.rb:19:in 'block (2 levels) in <top (required)>'
+
+  3) LeanOutput fixture fails with a long diff
+     Failure/Error: expect({ a: 1, b: 2, c: [1, 2, 3] }).to eq({ a: 1, b: 3, c: [1, 2, 4] })
+
+       expected: {a: 1, b: 3, c: [1, 2, 4]}
+            got: {a: 1, b: 2, c: [1, 2, 3]}
+
+       (compared using ==)
+
+       Diff:
+       @@ -1,3 +1,3 @@
+        :a => 1,
+       -:b => 3,
+       -:c => [1, 2, 4],
+       +:b => 2,
+       +:c => [1, 2, 3],
+     # ./spec/lean_output_fixture_tmp_spec.rb:14:in 'block (2 levels) in <top (required)>'
+     # ./spec/support/vcr.rb:20:in 'block (3 levels) in <top (required)>'
+     # ./spec/support/vcr.rb:19:in 'block (2 levels) in <top (required)>'
+
+Top 10 slowest examples (0.79135 seconds, 39.6% of total time):
+  PasswordStrengthValidator accepts a strong password (length + complexity)
+    0.13071 seconds ./spec/validators/password_strength_validator_spec.rb:15
+  PasswordStrengthValidator rejects passwords shorter than MIN_LENGTH
+    0.10195 seconds ./spec/validators/password_strength_validator_spec.rb:21
+  AuthEvent user association nullifies user_id when the user is destroyed
+    0.09134 seconds ./spec/models/auth_event_spec.rb:66
+  User scopes .locked excludes users whose lock has expired
+    0.08578 seconds ./spec/models/user_spec.rb:80
+  Session scopes .by_recency orders sessions with timestamps by last_active_at desc
+    0.07806 seconds ./spec/models/session_spec.rb:44
+  User validations is expected to validate that :email_address is case-insensitively unique
+    0.06425 seconds ./spec/models/user_spec.rb:20
+  User scopes .unconfirmed includes only users with confirmed_at nil
+    0.06098 seconds ./spec/models/user_spec.rb:70
+  User scopes .locked includes only users currently within the lock window
+    0.0602 seconds ./spec/models/user_spec.rb:76
+  User scopes .confirmed includes users with confirmed_at set
+    0.05928 seconds ./spec/models/user_spec.rb:63
+  Workspace dependent: :destroy cascades destroys child accounts when workspace is destroyed
+    0.05879 seconds ./spec/models/workspace_spec.rb:64
+
+Top 8 slowest example groups:
+  PasswordStrengthValidator
+    0.03323 seconds average (0.26585 seconds / 8 examples) ./spec/validators/password_strength_validator_spec.rb:5
+  Session
+    0.02924 seconds average (0.32162 seconds / 11 examples) ./spec/models/session_spec.rb:5
+  User
+    0.0181 seconds average (0.54314 seconds / 30 examples) ./spec/models/user_spec.rb:5
+  WorkspaceMembership
+    0.01385 seconds average (0.15231 seconds / 11 examples) ./spec/models/workspace_membership_spec.rb:5
+  Workspace
+    0.01299 seconds average (0.25985 seconds / 20 examples) ./spec/models/workspace_spec.rb:5
+  DomainEvent
+    0.01208 seconds average (0.13284 seconds / 11 examples) ./spec/models/domain_event_spec.rb:5
+  AuthEvent
+    0.01159 seconds average (0.12749 seconds / 11 examples) ./spec/models/auth_event_spec.rb:5
+  LeanOutput fixture
+    0.00401 seconds average (0.01603 seconds / 4 examples) ./spec/lean_output_fixture_tmp_spec.rb:3
+
+Finished in 2 seconds (files took 1.85 seconds to load)
+106 examples, 3 failures
+
+Failed examples:
+
+rspec ./spec/lean_output_fixture_tmp_spec.rb:4 # LeanOutput fixture fails on expectation mismatch
+rspec ./spec/lean_output_fixture_tmp_spec.rb:9 # LeanOutput fixture raises through gem frames
+rspec ./spec/lean_output_fixture_tmp_spec.rb:13 # LeanOutput fixture fails with a long diff
+
+Randomized with seed 32072
+
+Coverage report generated for RSpec to /home/was/projetos/pipeline_hq/coverage.
+Line Coverage: 8.62% (183 / 2124)
+Branch Coverage: 35.0% (7 / 20)
+Stopped processing SimpleCov as a previous error not related to SimpleCov has been detected

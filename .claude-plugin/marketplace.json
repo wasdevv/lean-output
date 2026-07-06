@@ -1,0 +1,13 @@
+{
+  "name": "lean-output",
+  "owner": {
+    "name": "wasdevv"
+  },
+  "plugins": [
+    {
+      "name": "lean-output",
+      "source": "./",
+      "description": "Compresses RSpec and RuboCop outputs before they reach the model — fewer tokens, zero lost failures."
+    }
+  ]
+}

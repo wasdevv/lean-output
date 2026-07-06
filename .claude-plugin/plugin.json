@@ -1,0 +1,13 @@
+{
+  "name": "lean-output",
+  "description": "Cut Claude Code token usage on Ruby/Rails projects: compresses RSpec and RuboCop outputs before they reach the model, keeping every failure and file:line intact.",
+  "version": "0.1.0",
+  "author": {
+    "name": "wasdevv",
+    "email": "o.u.f.acrazzy@gmail.com"
+  },
+  "homepage": "https://github.com/wasdevv/lean-output",
+  "repository": "https://github.com/wasdevv/lean-output",
+  "license": "MIT",
+  "keywords": ["tokens", "context", "ruby", "rails", "rspec", "rubocop", "hooks"]
+}

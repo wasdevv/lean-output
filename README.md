@@ -4,19 +4,27 @@
 
 Test suites are chatty. A single failing RSpec run ships progress dots, seeds, profiling tables, SimpleCov reports and gem backtraces into your context window — thousands of tokens the model doesn't need. lean-output rewrites those outputs on the fly via a `PostToolUse` hook, keeping **every failure, message and `file:line`** and dropping everything else.
 
-```text
-BEFORE (100 lines, ~1.2k tokens)              AFTER (14 lines, ~230 tokens)
+Real capture from a live Claude Code session on **pipeline_hq**, a Rails 8 CRM — one failing spec in a 103-example suite went from **3.2kB to 346B**:
 
-Randomized with seed 32072                    RSpec: 106 examples, 3 failures — Finished in 2 seconds
-............FFF...................
-                                              1) LeanOutput fixture fails on expectation mismatch  (rspec ./spec/..._spec.rb:4)
-Failures:                                        Failure/Error: expect(user.email_address).to eq("other@y.com")
-  1) ... 40 lines of traces ...                  expected: "other@y.com"
-Top 10 slowest examples ...                      got: "x@y.com"
-Top 8 slowest example groups ...                 at ./spec/lean_output_fixture_tmp_spec.rb:6
-Coverage report generated ...                 ...
-106 examples, 3 failures                      [lean-output] 4.5kB → 0.9kB (-80%)
+```text
+BEFORE — what rspec printed (3.2kB)             AFTER — what the model received (346B)
+
+Exit code 1                                     Exit code 1
+                                                RSpec: 103 examples, 1 failure — Finished in 1.89 seconds
+Randomized with seed 58159
+F...........................................   1) LeanOutput e2e fixture fails on purpose  (rspec ./spec/lean_output_e2e_tmp_spec.rb:4)
+                                                   Failure/Error: expect(User.new(email_address: "a@b.com").email_address).to eq("wrong@b.com")
+Failures:                                          expected: "wrong@b.com"
+  1) ...expectation + gem/support traces...        got: "a@b.com"
+                                                   at ./spec/lean_output_e2e_tmp_spec.rb:5
+Top 10 slowest examples (0.72675 seconds...
+Top 8 slowest example groups ...                [lean-output] 3.2kB → 346B (-90%)
+Coverage report generated for RSpec ...
+103 examples, 1 failure
+Failed examples: ...
 ```
+
+**-90% of the bytes, 100% of the signal** — the model still pointed at the exact failing `file:line`.
 
 ## Benchmark
 
@@ -80,7 +88,7 @@ Troubleshooting: if the hook never fires, check that your project is trusted and
 
 **Plugin de Claude Code que comprime saídas de RSpec e RuboCop antes de chegarem ao modelo — menos tokens, nenhuma falha perdida.**
 
-Saídas de suite de teste são verbosas: dots de progresso, seed, tabelas de profiling, relatório do SimpleCov, backtraces de gems. O lean-output reescreve essas saídas via hook `PostToolUse`, preservando **toda falha, mensagem e `file:line`** e descartando o resto — redução de **80–96%** em RSpec e **55–64%** em RuboCop, medida sobre saídas reais de um app Rails 8 (veja a tabela acima).
+Saídas de suite de teste são verbosas: dots de progresso, seed, tabelas de profiling, relatório do SimpleCov, backtraces de gems. O lean-output reescreve essas saídas via hooks `PostToolUse`/`PostToolUseFailure`, preservando **toda falha, mensagem e `file:line`** e descartando o resto. Em sessão real no pipeline_hq (CRM Rails 8): suite de 103 exemplos com 1 falha foi de **3.2kB para 346B (-90%)** — e o modelo ainda apontou o `file:line` exato da falha. No benchmark: **80–96%** em RSpec e **55–64%** em RuboCop (tabela acima).
 
 Instalação:
 

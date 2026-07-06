@@ -1,0 +1,16 @@
+#!/usr/bin/env ruby
+# PostToolUse hook entry point. Fail-safe by design: any error means
+# passthrough (exit 0, no stdout) so a bug here can never break a session.
+
+require "json"
+require_relative "../lib/lean_output"
+
+begin
+  payload = JSON.parse($stdin.read)
+  result = LeanOutput::Runner.call(payload)
+  puts JSON.generate(result) if result
+rescue StandardError
+  # passthrough
+end
+
+exit 0

@@ -14,7 +14,7 @@ module LeanOutput
       def self.compress(output)
         plain = Text.plain(output)
         summary = plain[SUMMARY] or return nil
-        finished = plain[/^Finished in .+$/]
+        finished = plain[/^Finished in .+$/]&.sub(/ \(files took.*\)/, "")
         reruns = plain.scan(/^rspec (\S+) # .*$/).flatten
 
         out = +"RSpec: #{summary}"
@@ -22,7 +22,7 @@ module LeanOutput
 
         parse_failures(plain).each_with_index do |failure, i|
           out << "\n\n#{i + 1}) #{failure[:description]}"
-          out << "  [rerun: rspec #{reruns[i]}]" if reruns[i]
+          out << "  (rspec #{reruns[i]})" if reruns[i]
           out << "\n   Failure/Error: #{failure[:error]}" if failure[:error]
           failure[:message].each { |line| out << "\n   #{line}" }
           out << "\n   at #{failure[:frame]}" if failure[:frame]

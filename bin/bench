@@ -1,0 +1,113 @@
+#!/usr/bin/env ruby
+# Benchmark: runs every fixture through the real Runner, measures savings and
+# verifies no failure/offense location is ever lost. Exits 1 if the plugin
+# fails its own promises (>=80% on failing rspec suites, zero lost locations).
+
+require "json"
+require "net/http"
+require_relative "../lib/lean_output"
+
+FIXTURES = File.expand_path("../spec/fixtures", __dir__)
+
+SCENARIOS = [
+  { name: "rspec — 3 failures",        command: "bundle exec rspec",   file: "rspec_failures.txt",       must_hit_target: true },
+  { name: "rspec — 3 failures (ANSI)", command: "bundle exec rspec",   file: "rspec_failures_ansi.txt",  must_hit_target: true },
+  { name: "rspec — all passing",       command: "bundle exec rspec",   file: "rspec_passing.txt" },
+  { name: "rubocop — 13 offenses",     command: "bundle exec rubocop", file: "rubocop_offenses.txt" },
+  { name: "rubocop — offenses (ANSI)", command: "bundle exec rubocop", file: "rubocop_offenses_ansi.txt" },
+  { name: "rubocop — clean run",       command: "bundle exec rubocop", file: "rubocop_clean.txt" }
+].freeze
+
+TARGET = 0.80
+
+def api_key
+  ENV["ANTHROPIC_API_KEY"]
+end
+
+def count_tokens(text)
+  return (text.size / 4.0).round unless api_key
+
+  uri = URI("https://api.anthropic.com/v1/messages/count_tokens")
+  request = Net::HTTP::Post.new(uri)
+  request["x-api-key"] = api_key
+  request["anthropic-version"] = "2023-06-01"
+  request["content-type"] = "application/json"
+  request.body = JSON.generate(model: "claude-sonnet-4-6", messages: [{ role: "user", content: text }])
+  response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(request) }
+  JSON.parse(response.body).fetch("input_tokens")
+end
+
+def lost_locations(original, compressed)
+  plain = LeanOutput::Text.plain(original)
+  locations = plain.scan(/^rspec (\S+) #/).flatten
+  plain.scan(LeanOutput::Compressors::Rubocop::OFFENSE) { |file, loc, _| locations << "#{file} #{loc}" }
+  locations.reject do |loc|
+    loc.split(" ").all? { |part| compressed.include?(part) }
+  end
+end
+
+markdown = ARGV.include?("--markdown")
+mode = api_key ? "Anthropic count_tokens API" : "estimate (chars / 4)"
+failed = false
+rows = []
+
+SCENARIOS.each do |scenario|
+  original = File.read(File.join(FIXTURES, scenario[:file]))
+  result = LeanOutput::Runner.call(
+    "tool_name" => "Bash",
+    "tool_input" => { "command" => scenario[:command] },
+    "tool_response" => original
+  )
+
+  unless result
+    rows << [scenario[:name], original.bytesize, nil, count_tokens(original), nil, nil]
+    next
+  end
+
+  compressed = result.dig("hookSpecificOutput", "updatedToolOutput")
+  reduction = 1.0 - compressed.bytesize.to_f / original.bytesize
+
+  lost = lost_locations(original, compressed)
+  unless lost.empty?
+    warn "LOST LOCATIONS in #{scenario[:file]}: #{lost.join(", ")}"
+    failed = true
+  end
+
+  if scenario[:must_hit_target] && reduction < TARGET
+    warn "BELOW TARGET in #{scenario[:file]}: -#{(reduction * 100).round(1)}% (target -#{(TARGET * 100).round}%)"
+    failed = true
+  end
+
+  rows << [scenario[:name], original.bytesize, compressed.bytesize,
+           count_tokens(original), count_tokens(compressed), reduction]
+end
+
+if markdown
+  puts "| Scenario | Chars | Tokens¹ | Reduction |"
+  puts "|---|---|---|---|"
+  rows.each do |name, cb, ca, tb, ta, red|
+    if ca
+      puts "| #{name} | #{cb} → #{ca} | #{tb} → #{ta} | **-#{(red * 100).round}%** |"
+    else
+      puts "| #{name} | #{cb} | #{tb} | passthrough² |"
+    end
+  end
+  puts "\n¹ #{mode}. ² Untouched: small outputs are never rewritten."
+else
+  puts format("%-30s %15s %15s %10s", "scenario", "chars", "tokens", "reduction")
+  rows.each do |name, cb, ca, tb, ta, red|
+    if ca
+      puts format("%-30s %6d → %6d %6d → %6d %9s", name, cb, ca, tb, ta, "-#{(red * 100).round}%")
+    else
+      puts format("%-30s %15d %15d %10s", name, cb, tb, "passthrough")
+    end
+  end
+  puts "\ntokens: #{mode}"
+end
+
+if failed
+  warn "\nBENCH FAILED"
+  exit 1
+end
+
+puts "\nAll checks passed: zero lost locations, failing suites ≥ #{(TARGET * 100).round}% reduction."

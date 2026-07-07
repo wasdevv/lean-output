@@ -17,7 +17,10 @@ module LeanOutput
         out = +"RuboCop: #{summary}"
         plain.scan(OFFENSE).group_by(&:first).each do |file, offenses|
           out << "\n\n#{file}"
-          offenses.each { |(_, location, message)| out << "\n  #{location} #{message}" }
+          offenses.group_by { |(_, _, message)| message }.each do |message, group|
+            locations = group.map { |(_, location, _)| location }
+            out << "\n  #{locations.join(", ")} #{message}"
+          end
         end
 
         out << "\n"

@@ -35,8 +35,8 @@ Measured on real outputs captured from a Rails 8 app (`bin/bench`):
 | rspec — 3 failures | 4610 → 914 | 1153 → 228 | **-80%** |
 | rspec — 3 failures (ANSI) | 6233 → 917 | 1558 → 228 | **-85%** |
 | rspec — all passing | 2558 → 97 | 640 → 23 | **-96%** |
-| rubocop — 13 offenses | 2122 → 964 | 531 → 241 | **-55%** |
-| rubocop — offenses (ANSI) | 2671 → 964 | 668 → 241 | **-64%** |
+| rubocop — 13 offenses | 2122 → 631 | 531 → 157 | **-70%** |
+| rubocop — offenses (ANSI) | 2671 → 631 | 668 → 157 | **-76%** |
 | rubocop — clean run | 80 | 20 | passthrough² |
 
 ¹ estimate (chars / 4); run `ANTHROPIC_API_KEY=... bin/bench` for exact counts via the `count_tokens` API.
@@ -58,7 +58,7 @@ Requires Ruby ≥ 3.0 on your PATH. The hook runs on pure stdlib — no gems, no
 Hooks on `PostToolUse` **and** `PostToolUseFailure` intercept every Bash tool result — the failure event matters most, since a failing suite exits nonzero and never reaches `PostToolUse`. A detector matches the command (`rspec` / `rubocop`) **and** sniffs the output for the tool's summary line — both must agree, otherwise nothing happens. When a compressor applies:
 
 - **RSpec** — keeps the summary, every failure (description, `Failure/Error` source, expectation/exception message, first project frame, rerun location). Drops dots, seeds, profiling, coverage noise, gem/support frames and diff blocks.
-- **RuboCop** — keeps the summary and every offense (`line:col`, cop, message) grouped by file. Drops code excerpts, carets and progress output.
+- **RuboCop** — keeps the summary and every offense location, grouped by file and deduped by cop/message (`3:1, 7:2, 9:5 Layout/TrailingWhitespace: ...`). Drops code excerpts, carets and progress output.
 
 ## Fail-safe by design
 
@@ -88,7 +88,7 @@ Troubleshooting: if the hook never fires, check that your project is trusted and
 
 **Plugin de Claude Code que comprime saídas de RSpec e RuboCop antes de chegarem ao modelo — menos tokens, nenhuma falha perdida.**
 
-Saídas de suite de teste são verbosas: dots de progresso, seed, tabelas de profiling, relatório do SimpleCov, backtraces de gems. O lean-output reescreve essas saídas via hooks `PostToolUse`/`PostToolUseFailure`, preservando **toda falha, mensagem e `file:line`** e descartando o resto. Em sessão real no pipeline_hq (CRM Rails 8): suite de 103 exemplos com 1 falha foi de **3.2kB para 346B (-90%)** — e o modelo ainda apontou o `file:line` exato da falha. No benchmark: **80–96%** em RSpec e **55–64%** em RuboCop (tabela acima).
+Saídas de suite de teste são verbosas: dots de progresso, seed, tabelas de profiling, relatório do SimpleCov, backtraces de gems. O lean-output reescreve essas saídas via hooks `PostToolUse`/`PostToolUseFailure`, preservando **toda falha, mensagem e `file:line`** e descartando o resto. Em sessão real no pipeline_hq (CRM Rails 8): suite de 103 exemplos com 1 falha foi de **3.2kB para 346B (-90%)** — e o modelo ainda apontou o `file:line` exato da falha. No benchmark: **80–96%** em RSpec e **70–76%** em RuboCop (tabela acima).
 
 Instalação:
 

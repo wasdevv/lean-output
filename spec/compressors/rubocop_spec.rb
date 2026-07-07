@@ -22,6 +22,11 @@ RSpec.describe LeanOutput::Compressors::Rubocop do
       expect(compressed.scan("app/models/lean_output_bad_tmp.rb").size).to eq(1)
     end
 
+    it "dedupes repeated cop/message pairs, listing all locations once" do
+      expect(compressed.scan("Layout/TrailingWhitespace").size).to eq(1)
+      expect(compressed).to include("11:21, 15:16, 17:4 Layout/TrailingWhitespace")
+    end
+
     it "drops code excerpts, carets and progress noise" do
       expect(compressed).not_to include("^^^")
       expect(compressed).not_to include("Inspecting 18 files")
@@ -29,8 +34,8 @@ RSpec.describe LeanOutput::Compressors::Rubocop do
       expect(compressed).not_to include("return x")
     end
 
-    it "reduces size by at least 55% on this fixture" do
-      expect(compressed.bytesize).to be < original.bytesize * 0.45
+    it "reduces size by at least 65% on this fixture" do
+      expect(compressed.bytesize).to be < original.bytesize * 0.35
     end
   end
 

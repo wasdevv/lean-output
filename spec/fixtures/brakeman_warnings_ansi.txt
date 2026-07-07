@@ -1,0 +1,86 @@
+[1m[32mBrakeman v8.0.5[0m
+[32mLoading scanner[0m...
+[1m[32mScanning /home/was/projetos/pipeline_hq[0m
+[32mProcessing gems[0m...
+[32mProcessing configuration[0m...
+[32mFinding files[0m...
+[32mParsing files[0m...
+[32mDetecting file types[0m...
+[32mProcessing initializers[0m...
+[32mProcessing libraries[0m...
+[32mProcessing routes[0m...
+[32mProcessing templates[0m...
+[32mProcessing data flow[0m...
+[32mProcessing models[0m...
+[32mProcessing controllers[0m...
+[32mProcessing data flow[0m...
+[32mIndexing method calls[0m...
+[32mRunning 79 checks in parallel[0m...
+[32mGenerating report[0m...
+
+[1m[35m== Brakeman Report ==
+[0m
+[32mApplication Path[0m: /home/was/projetos/pipeline_hq
+[32mRails Version[0m: 8.1.3
+[32mBrakeman Version[0m: 8.0.5
+[32mScan Date[0m: 2026-07-06 21:24:34 -0300
+[32mDuration[0m: 1.11685327 seconds
+[32mChecks Run[0m: BasicAuth, BasicAuthTimingAttack, CSRFTokenForgeryCVE, ContentTag, CookieSerialization, CreateWith, CrossSiteScripting, DefaultRoutes, Deserialize, DetailedExceptions, DigestDoS, DynamicFinders, EOLRails, EOLRuby, EscapeFunction, Evaluation, Execute, FileAccess, FileDisclosure, FilterSkipping, ForgerySetting, HeaderDoS, I18nXSS, JRubyXML, JSONEncoding, JSONEntityEscape, JSONParsing, LinkTo, LinkToHref, MailTo, MassAssignment, MimeTypeDoS, ModelAttrAccessible, ModelAttributes, ModelSerialize, NestedAttributes, NestedAttributesBypass, NumberToCurrency, PageCachingCVE, Pathname, PermitAttributes, QuoteTableName, Ransack, Redirect, RegexDoS, Render, RenderDoS, RenderInline, RenderRCE, ResponseSplitting, RouteDoS, SQL, SQLCVEs, SSLVerify, SafeBufferManipulation, SanitizeConfigCve, SanitizeMethods, SelectTag, SelectVulnerability, Send, SendFile, SessionManipulation, SessionSettings, SimpleFormat, SingleQuotes, SkipBeforeFilter, SprocketsPathTraversal, StripTags, SymbolDoSCVE, TemplateInjection, TranslateBug, UnsafeReflection, UnsafeReflectionMethods, ValidationRegex, VerbConfusion, WeakRSAKey, WithoutProtection, XMLDoS, YAMLParsing
+
+[1m[35m== Overview ==
+[0m
+[32mControllers[0m: 22
+[32mModels[0m: 17
+[32mTemplates[0m: 74
+[32mErrors[0m: 0
+[32mSecurity Warnings[0m: 5
+
+[1m[35m== Warning Types ==
+[0m
+[32mCommand Injection[0m: 1
+[32mCross-Site Scripting[0m: 1
+[32mFile Access[0m: 1
+[32mSQL Injection[0m: 2
+
+[1m[35m== Warnings ==
+[0m
+[32mConfidence[0m: [31mHigh[0m
+[32mCategory[0m: Command Injection
+[32mCheck[0m: Execute
+[32mMessage[0m: Possible command injection
+[32mCode[0m: system("echo #{[33mparams[:cmd][0m}")
+[32mFile[0m: app/controllers/lean_output_vuln_tmp_controller.rb
+[32mLine[0m: 8
+
+[32mConfidence[0m: [31mHigh[0m
+[32mCategory[0m: Cross-Site Scripting
+[32mCheck[0m: RenderInline
+[32mMessage[0m: Unescaped parameter value rendered inline
+[32mCode[0m: render(inline => [33mparams[:template][0m, {})
+[32mFile[0m: app/controllers/lean_output_vuln_tmp_controller.rb
+[32mLine[0m: 9
+
+[32mConfidence[0m: [31mHigh[0m
+[32mCategory[0m: File Access
+[32mCheck[0m: SendFile
+[32mMessage[0m: Parameter value used in file name
+[32mCode[0m: send_file([33mparams[:path][0m)
+[32mFile[0m: app/controllers/lean_output_vuln_tmp_controller.rb
+[32mLine[0m: 13
+
+[32mConfidence[0m: [31mHigh[0m
+[32mCategory[0m: SQL Injection
+[32mCheck[0m: SQL
+[32mMessage[0m: Possible SQL injection
+[32mCode[0m: User.where("name = '#{[33mparams[:name][0m}'")
+[32mFile[0m: app/controllers/lean_output_vuln_tmp_controller.rb
+[32mLine[0m: 3
+
+[32mConfidence[0m: [31mHigh[0m
+[32mCategory[0m: SQL Injection
+[32mCheck[0m: SQL
+[32mMessage[0m: Possible SQL injection
+[32mCode[0m: User.find_by_sql("SELECT * FROM users WHERE id = #{[33mparams[:id][0m}")
+[32mFile[0m: app/controllers/lean_output_vuln_tmp_controller.rb
+[32mLine[0m: 14
+

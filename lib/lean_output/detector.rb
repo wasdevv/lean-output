@@ -1,6 +1,6 @@
 module LeanOutput
   class Detector
-    COMPRESSORS = [Compressors::Rspec, Compressors::Rubocop].freeze
+    COMPRESSORS = [Compressors::Rspec, Compressors::Rubocop, Compressors::Brakeman].freeze
     JSON_FORMAT = /(-f|--format)[= ]?j/
 
     def self.for(command, output)

@@ -15,7 +15,10 @@ SCENARIOS = [
   { name: "rspec — all passing",       command: "bundle exec rspec",   file: "rspec_passing.txt" },
   { name: "rubocop — 13 offenses",     command: "bundle exec rubocop", file: "rubocop_offenses.txt" },
   { name: "rubocop — offenses (ANSI)", command: "bundle exec rubocop", file: "rubocop_offenses_ansi.txt" },
-  { name: "rubocop — clean run",       command: "bundle exec rubocop", file: "rubocop_clean.txt" }
+  { name: "rubocop — clean run",       command: "bundle exec rubocop", file: "rubocop_clean.txt" },
+  { name: "brakeman — 5 warnings",     command: "bundle exec brakeman", file: "brakeman_warnings.txt" },
+  { name: "brakeman — warnings (ANSI)", command: "bundle exec brakeman", file: "brakeman_warnings_ansi.txt" },
+  { name: "brakeman — clean scan",     command: "bundle exec brakeman", file: "brakeman_clean.txt" }
 ].freeze
 
 TARGET = 0.80
@@ -41,6 +44,7 @@ def lost_locations(original, compressed)
   plain = LeanOutput::Text.plain(original)
   locations = plain.scan(/^rspec (\S+) #/).flatten
   plain.scan(LeanOutput::Compressors::Rubocop::OFFENSE) { |file, loc, _| locations << "#{file} #{loc}" }
+  plain.scan(/^File: (\S+)\nLine: (\d+)/) { |file, line| locations << "#{file} #{line}" }
   locations.reject do |loc|
     loc.split(" ").all? { |part| compressed.include?(part) }
   end

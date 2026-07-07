@@ -12,6 +12,11 @@ RSpec.describe LeanOutput::Detector do
     expect(compressor).to eq(LeanOutput::Compressors::Rubocop)
   end
 
+  it "picks the Brakeman compressor for a brakeman command with brakeman output" do
+    compressor = described_class.for("bundle exec brakeman", fixture("brakeman_warnings.txt"))
+    expect(compressor).to eq(LeanOutput::Compressors::Brakeman)
+  end
+
   it "returns nil when the command matches but the output does not" do
     expect(described_class.for("bundle exec rspec", "LoadError: cannot load such file")).to be_nil
   end

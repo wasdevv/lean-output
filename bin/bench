@@ -10,17 +10,38 @@ require_relative "../lib/lean_output"
 FIXTURES = File.expand_path("../spec/fixtures", __dir__)
 
 SCENARIOS = [
-  { name: "rspec — 3 failures",        command: "bundle exec rspec",   file: "rspec_failures.txt",       must_hit_target: true },
-  { name: "rspec — 3 failures (ANSI)", command: "bundle exec rspec",   file: "rspec_failures_ansi.txt",  must_hit_target: true },
+  { name: "rspec — 3 failures",        command: "bundle exec rspec",   file: "rspec_failures.txt",       must_hit_target: true, expect_locations: true },
+  { name: "rspec — 3 failures (ANSI)", command: "bundle exec rspec",   file: "rspec_failures_ansi.txt",  must_hit_target: true, expect_locations: true },
   { name: "rspec — all passing",       command: "bundle exec rspec",   file: "rspec_passing.txt" },
-  { name: "rubocop — 13 offenses",     command: "bundle exec rubocop", file: "rubocop_offenses.txt" },
-  { name: "rubocop — offenses (ANSI)", command: "bundle exec rubocop", file: "rubocop_offenses_ansi.txt" },
+  { name: "rubocop — 13 offenses",     command: "bundle exec rubocop", file: "rubocop_offenses.txt",     expect_locations: true },
+  { name: "rubocop — offenses (ANSI)", command: "bundle exec rubocop", file: "rubocop_offenses_ansi.txt", expect_locations: true },
   { name: "rubocop — clean run",       command: "bundle exec rubocop", file: "rubocop_clean.txt" },
-  { name: "brakeman — 5 warnings",     command: "bundle exec brakeman", file: "brakeman_warnings.txt" },
-  { name: "brakeman — warnings (ANSI)", command: "bundle exec brakeman", file: "brakeman_warnings_ansi.txt" },
+  { name: "brakeman — 5 warnings",     command: "bundle exec brakeman", file: "brakeman_warnings.txt",   expect_locations: true },
+  { name: "brakeman — warnings (ANSI)", command: "bundle exec brakeman", file: "brakeman_warnings_ansi.txt", expect_locations: true },
   { name: "brakeman — clean scan",     command: "bundle exec brakeman", file: "brakeman_clean.txt" },
-  { name: "git show — vendored deps",  command: "git show 87209f8",     file: "git_show_vendored.txt", must_hit_target: true },
-  { name: "git show — no generated",   command: "git show 87209f8",     file: "git_show_plain.txt" }
+  { name: "git show — vendored deps",  command: "git show 87209f8",     file: "git_show_vendored.txt", must_hit_target: true, expect_locations: true },
+  { name: "git show — no generated",   command: "git show 87209f8",     file: "git_show_plain.txt" },
+  { name: "cargo — 4 errors",          command: "cargo build",          file: "cargo_errors.txt",         target: 0.40, expect_locations: true },
+  { name: "cargo — 4 errors (ANSI)",   command: "cargo build",          file: "cargo_errors_ansi.txt",    target: 0.60, expect_locations: true },
+  { name: "cargo — 7 warnings",        command: "cargo clippy",         file: "cargo_warnings.txt",       target: 0.35, expect_locations: true },
+  { name: "cargo — warnings (ANSI)",   command: "cargo clippy",         file: "cargo_warnings_ansi.txt",  target: 0.55, expect_locations: true },
+  { name: "cargo — clean build",       command: "cargo build",          file: "cargo_clean.txt" }
+].freeze
+
+# Output that must never be rewritten: either the compressor cannot rebuild it,
+# or the input is small enough that rewriting is not worth the risk.
+NEGATIVE = [
+  { name: "cargo test — libtest results", command: "cargo test",  file: "cargo_test_harness.txt",
+    why: "panic sites are not rustc art; compressing would drop them" },
+  { name: "cargo build — JSON format",    command: "cargo build --message-format=json", file: "cargo_errors.txt",
+    why: "machine-readable output is consumed verbatim" },
+  { name: "rspec — JSON format",          command: "bundle exec rspec -f json", file: "rspec_failures.txt",
+    why: "machine-readable output is consumed verbatim" },
+  { name: "cargo build && rspec",         command: "cargo build && bundle exec rspec",
+    files: %w[cargo_errors.txt rspec_failures.txt],
+    why: "two compressors match, so the buffer is ambiguous" },
+  { name: "short output",                 command: "cargo build", file: nil,
+    why: "below the minimum line count" }
 ].freeze
 
 TARGET = 0.80
@@ -42,7 +63,7 @@ def count_tokens(text)
   JSON.parse(response.body).fetch("input_tokens")
 end
 
-def lost_locations(original, compressed)
+def all_locations(original)
   plain = LeanOutput::Text.plain(original)
   locations = plain.scan(/^rspec (\S+) #/).flatten
   plain.scan(LeanOutput::Compressors::Rubocop::OFFENSE) { |file, loc, _| locations << "#{file} #{loc}" }
@@ -50,9 +71,16 @@ def lost_locations(original, compressed)
   # A collapsed diff block must still name its file, or the reviewer cannot
   # tell that a generated artifact changed at all.
   locations.concat(plain.scan(%r{^diff --git a/(\S+)}).flatten)
-  locations.reject do |loc|
+  locations.concat(plain.scan(/^\s+--> (\S+:\d+:\d+)$/).flatten)
+  locations
+end
+
+def lost(original, compressed)
+  extracted = all_locations(original)
+  missing = extracted.reject do |loc|
     loc.split(" ").all? { |part| compressed.include?(part) }
   end
+  [extracted, missing]
 end
 
 markdown = ARGV.include?("--markdown")
@@ -76,19 +104,48 @@ SCENARIOS.each do |scenario|
   compressed = result.dig("hookSpecificOutput", "updatedToolOutput")
   reduction = 1.0 - compressed.bytesize.to_f / original.bytesize
 
-  lost = lost_locations(original, compressed)
-  unless lost.empty?
-    warn "LOST LOCATIONS in #{scenario[:file]}: #{lost.join(", ")}"
+  extracted, missing = lost(original, compressed)
+  unless missing.empty?
+    warn "LOST LOCATIONS in #{scenario[:file]}: #{missing.join(", ")}"
     failed = true
   end
 
-  if scenario[:must_hit_target] && reduction < TARGET
-    warn "BELOW TARGET in #{scenario[:file]}: -#{(reduction * 100).round(1)}% (target -#{(TARGET * 100).round}%)"
+  # A fixture full of failures from which we extract nothing would satisfy the
+  # invariant vacuously — the extractor, not the compressor, would be broken.
+  if scenario[:expect_locations] && extracted.empty?
+    warn "NO LOCATIONS EXTRACTED from #{scenario[:file]}: the invariant is vacuous here"
+    failed = true
+  end
+
+  target = scenario[:target] || (scenario[:must_hit_target] ? TARGET : nil)
+  if target && reduction < target
+    warn "BELOW TARGET in #{scenario[:file]}: -#{(reduction * 100).round(1)}% (target -#{(target * 100).round}%)"
     failed = true
   end
 
   rows << [scenario[:name], original.bytesize, compressed.bytesize,
            count_tokens(original), count_tokens(compressed), reduction]
+end
+
+NEGATIVE.each do |scenario|
+  original =
+    if scenario[:files]
+      scenario[:files].map { |f| File.read(File.join(FIXTURES, f)) }.join("\n")
+    elsif scenario[:file]
+      File.read(File.join(FIXTURES, scenario[:file]))
+    else
+      "error: boom\n --> src/a.rs:1:1\n"
+    end
+  result = LeanOutput::Runner.call(
+    "tool_name" => "Bash",
+    "tool_input" => { "command" => scenario[:command] },
+    "tool_response" => original
+  )
+
+  next unless result
+
+  warn "MUST NOT COMPRESS — #{scenario[:name]}: #{scenario[:why]}"
+  failed = true
 end
 
 if markdown
@@ -119,4 +176,5 @@ if failed
   exit 1
 end
 
-puts "\nAll checks passed: zero lost locations, failing suites ≥ #{(TARGET * 100).round}% reduction."
+puts "\nAll checks passed: zero lost locations, every scenario yields locations, " \
+     "#{NEGATIVE.size} negative cases left untouched."

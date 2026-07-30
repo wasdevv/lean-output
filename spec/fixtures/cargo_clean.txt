@@ -1,0 +1,2 @@
+   Compiling leanfx v0.1.0 (/tmp/lean_cargo_fx)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.16s

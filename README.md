@@ -43,11 +43,22 @@ Measured on real outputs captured from a Rails 8 app (`bin/bench`):
 | brakeman — clean scan | 1922 → 66 | 481 → 16 | **-97%** |
 | git show — vendored deps | 62600 → 9700 | 15642 → 2416 | **-85%** |
 | git show — no generated | 4886 | 1215 | passthrough² |
+| cargo — 4 errors | 1513 → 833 | 378 → 207 | **-45%** |
+| cargo — 4 errors (ANSI) | 2390 → 833 | 598 → 207 | **-65%** |
+| cargo — 7 warnings | 1698 → 1024 | 425 → 256 | **-40%** |
+| cargo — warnings (ANSI) | 2575 → 1024 | 644 → 256 | **-60%** |
+| cargo — clean build | 120 | 30 | passthrough² |
 
 ¹ estimate (chars / 4); run `ANTHROPIC_API_KEY=... bin/bench` for exact counts via the `count_tokens` API.
 ² Untouched: small outputs are never rewritten.
 
-The benchmark also enforces a **zero-loss guarantee**: it fails if any failure/offense `file:line` — or any changed file path — from the original output is missing from the compressed version.
+Cargo compresses less than the Ruby tools, and that is the correct outcome: rustc diagnostics are mostly signal already. What goes away is the ASCII art — the echoed source line, the caret runs, the suggestion diffs — while every `file:line:col` and every `note:`/`help:` stays. On colored output the win doubles, because escape sequences are a third of the bytes.
+
+The benchmark enforces three invariants, and fails the build on any of them:
+
+1. **Zero loss** — every failure/offense `file:line`, every rustc `--> file:line:col`, and every changed file path in the original must appear in the compressed output.
+2. **No vacuous passes** — a fixture that is supposed to contain failures must actually yield locations to the extractor. Without this, a broken extractor would make invariant 1 pass trivially.
+3. **Negative corpus** — five inputs that must come back *untouched*: libtest results, `--message-format=json`, `-f json`, genuinely ambiguous chained commands, and output below the line threshold.
 
 Diffs are where the numbers get absurd, because a single vendored dependency dwarfs everything a reviewer actually reads. The full commit the fixture above was sliced from (a CodeMirror 6 vendoring: 29 files, 233 hand-written insertions) goes from **651,833 B to 13,247 B — -97%**, roughly **163k tokens down to 3.3k**. Uncompressed it does not fit in a review at all.
 
@@ -62,12 +73,13 @@ Requires Ruby ≥ 3.0 on your PATH. The hook runs on pure stdlib — no gems, no
 
 ## How it works
 
-Hooks on `PostToolUse` **and** `PostToolUseFailure` intercept every Bash tool result — the failure event matters most, since a failing suite exits nonzero and never reaches `PostToolUse`. A detector matches the command (`rspec` / `rubocop` / `brakeman` / `git diff|show`) **and** sniffs the output for the tool's summary line — both must agree, otherwise nothing happens. When a compressor applies:
+Hooks on `PostToolUse` **and** `PostToolUseFailure` intercept every Bash tool result — the failure event matters most, since a failing suite exits nonzero and never reaches `PostToolUse`. A detector matches the command (`rspec` / `rubocop` / `brakeman` / `git diff|show` / `cargo`) **and** sniffs the output for the tool's summary line — both must agree, otherwise nothing happens. When a compressor applies:
 
 - **RSpec** — keeps the summary, every failure (description, `Failure/Error` source, expectation/exception message, first project frame, rerun location). Drops dots, seeds, profiling, coverage noise, gem/support frames and diff blocks.
 - **RuboCop** — keeps the summary and every offense location, grouped by file and deduped by cop/message (`3:1, 7:2, 9:5 Layout/TrailingWhitespace: ...`). Drops code excerpts, carets and progress output.
 - **Brakeman** — keeps the warning count and every warning (line, confidence, category, message, vulnerable code) grouped by file. Drops the progress log, the ~1kB "Checks Run" list and the report boilerplate.
 - **git diff / git show** — passes every hand-written hunk through **byte for byte**, and collapses the body of generated files to one line (`[lean-output] generated file — +12/-3 lines, body collapsed`), keeping their `diff --git` header so nothing disappears silently. Collapsed: `vendor/`, `node_modules/`, `dist/`, `coverage/`, `app/assets/builds/`, lockfiles (`Gemfile.lock`, `Cargo.lock`, `package-lock.json`, `yarn.lock`, `go.sum`, …), `db/structure.sql`, `*.min.js|css` and source maps. **`db/schema.rb` is deliberately not collapsed** — it is how a Rails reviewer sees what a migration actually did.
+- **cargo** (`build`, `check`, `clippy`, `test`, `run`) — keeps the diagnostic count, and for each one the `error[CODE]`/`warning` header, its `--> file:line:col`, the caret labels (the text that explains *why*, e.g. `expected i32, found &str`) and every `note:`/`help:`. Drops the echoed source lines, the caret art itself, suggestion diffs and `Compiling`/`Finished` progress. Refuses to touch output that carries **libtest results** (`running N tests`, `test result:`) or a successful `cargo run`, because panic sites and program stdout are not rustc art and cannot be rebuilt.
 
 ## Fail-safe by design
 
@@ -95,7 +107,7 @@ Troubleshooting: if the hook never fires, check that your project is trusted and
 
 ## Em português
 
-**Plugin de Claude Code que comprime saídas de RSpec, RuboCop, Brakeman e `git diff` antes de chegarem ao modelo — menos tokens, nenhuma falha perdida.**
+**Plugin de Claude Code que comprime saídas de RSpec, RuboCop, Brakeman, `git diff` e `cargo` antes de chegarem ao modelo — menos tokens, nenhuma falha perdida.**
 
 Saídas de suite de teste são verbosas: dots de progresso, seed, tabelas de profiling, relatório do SimpleCov, backtraces de gems. O lean-output reescreve essas saídas via hooks `PostToolUse`/`PostToolUseFailure`, preservando **toda falha, mensagem e `file:line`** e descartando o resto. Em sessão real no pipeline_hq (CRM Rails 8): suite de 103 exemplos com 1 falha foi de **3.2kB para 346B (-90%)** — e o modelo ainda apontou o `file:line` exato da falha. No benchmark: **80–96%** em RSpec, **70–76%** em RuboCop e **79–97%** em Brakeman (tabela acima).
 
@@ -107,6 +119,8 @@ Instalação:
 /plugin marketplace add wasdevv/lean-output
 /plugin install lean-output@lean-output
 ```
+
+Para Rust, o compressor de `cargo` guarda o cabeçalho de cada diagnóstico, o `--> file:line:col`, os rótulos que explicam o erro e os `note:`/`help:` — joga fora a arte ASCII (linha de código ecoada, carets, sugestões) e as linhas de progresso. Ele se **recusa** a mexer em saída com resultado de libtest (`running N tests`, `test result:`) ou em `cargo run` que compilou: panic e stdout do programa não são arte do rustc e não podem ser reconstruídos.
 
 Princípios: em qualquer dúvida, passthrough (a saída original fica intacta); falhas e `file:line` nunca são perdidos (o `bin/bench` falha se isso acontecer); qualquer erro no hook sai silenciosamente sem quebrar a sessão; `LEAN_OUTPUT_DISABLE=1` desliga tudo.
 

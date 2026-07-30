@@ -1,0 +1,29 @@
+   Compiling leanfx v0.1.0 (/tmp/lean_cargo_fx)
+    Finished `test` profile [unoptimized] target(s) in 0.42s
+     Running unittests src/lib.rs (target/debug/deps/leanfx-9a8b7c6d)
+
+running 3 tests
+test math::tests::adds ... ok
+test math::tests::divides ... FAILED
+test parser::tests::handles_utf8 ... FAILED
+
+failures:
+
+---- math::tests::divides stdout ----
+thread 'math::tests::divides' panicked at src/math.rs:42:9:
+assertion `left == right` failed
+  left: 3
+ right: 4
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- parser::tests::handles_utf8 stdout ----
+thread 'parser::tests::handles_utf8' panicked at src/parser.rs:118:5:
+called `Option::unwrap()` on a `None` value
+
+failures:
+    math::tests::divides
+    parser::tests::handles_utf8
+
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out
+
+error: test failed, to rerun pass `--lib`

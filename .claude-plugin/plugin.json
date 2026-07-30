@@ -1,7 +1,7 @@
 {
   "name": "lean-output",
-  "description": "Cut Claude Code token usage on Ruby/Rails projects: compresses RSpec, RuboCop, Brakeman and git diff outputs before they reach the model, keeping every failure, file:line and changed path intact.",
-  "version": "0.3.0",
+  "description": "Cut Claude Code token usage: compresses RSpec, RuboCop, Brakeman, git diff and cargo outputs before they reach the model, keeping every failure, file:line and changed path intact.",
+  "version": "0.4.0",
   "author": {
     "name": "wasdevv",
     "email": "o.u.f.acrazzy@gmail.com"
@@ -9,5 +9,5 @@
   "homepage": "https://github.com/wasdevv/lean-output",
   "repository": "https://github.com/wasdevv/lean-output",
   "license": "MIT",
-  "keywords": ["tokens", "context", "ruby", "rails", "rspec", "rubocop", "brakeman", "git", "diff", "hooks"]
+  "keywords": ["tokens", "context", "ruby", "rails", "rspec", "rubocop", "brakeman", "git", "diff", "cargo", "rust", "hooks"]
 }

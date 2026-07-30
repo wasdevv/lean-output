@@ -1,0 +1,46 @@
+   Compiling leanfx v0.1.0 (/tmp/lean_cargo_fx)
+error[E0308]: mismatched types
+ --> src/main.rs:8:27
+  |
+8 |     let wrong_type: i32 = "not an integer";
+  |                     ---   ^^^^^^^^^^^^^^^^ expected `i32`, found `&str`
+  |                     |
+  |                     expected due to this
+
+error[E0600]: cannot apply unary operator `-` to type `u32`
+ --> src/main.rs:9:24
+  |
+9 |     let missing: u32 = -1;
+  |                        ^^ cannot apply unary operator `-`
+  |
+  = note: unsigned values cannot be negated
+help: you may have meant the maximum value of `u32`
+  |
+9 -     let missing: u32 = -1;
+9 +     let missing: u32 = u32::MAX;
+  |
+
+error[E0308]: mismatched types
+  --> src/main.rs:11:16
+   |
+11 |     map.insert("key", 1);
+   |         ------ ^^^^^ expected `String`, found `&str`
+   |         |
+   |         arguments to this method are incorrect
+   |
+note: method defined here
+  --> /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/collections/hash/map.rs:1333:11
+help: try using a conversion method
+   |
+11 |     map.insert("key".to_string(), 1);
+   |                     ++++++++++++
+
+error[E0425]: cannot find function `undefined_function` in this scope
+  --> src/main.rs:12:5
+   |
+12 |     undefined_function(3);
+   |     ^^^^^^^^^^^^^^^^^^ not found in this scope
+
+Some errors have detailed explanations: E0308, E0425, E0600.
+For more information about an error, try `rustc --explain E0308`.
+error: could not compile `leanfx` (bin "leanfx") due to 4 previous errors

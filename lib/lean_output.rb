@@ -5,6 +5,7 @@ require_relative 'lean_output/compressors/rspec'
 require_relative 'lean_output/compressors/rubocop'
 require_relative 'lean_output/compressors/brakeman'
 require_relative 'lean_output/compressors/git_diff'
+require_relative 'lean_output/compressors/cargo'
 require_relative 'lean_output/detector'
 require_relative 'lean_output/runner'
 

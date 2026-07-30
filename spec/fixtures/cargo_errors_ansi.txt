@@ -1,0 +1,46 @@
+[1m[92m   Compiling[0m leanfx v0.1.0 (/tmp/lean_cargo_fx)
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+ [1m[94m--> [0msrc/main.rs:8:27
+  [1m[94m|[0m
+[1m[94m8[0m [1m[94m|[0m     let wrong_type: i32 = "not an integer";
+  [1m[94m|[0m                     [1m[94m---[0m   [1m[91m^^^^^^^^^^^^^^^^[0m [1m[91mexpected `i32`, found `&str`[0m
+  [1m[94m|[0m                     [1m[94m|[0m
+  [1m[94m|[0m                     [1m[94mexpected due to this[0m
+
+[1m[91merror[E0600][0m[1m: cannot apply unary operator `-` to type `u32`[0m
+ [1m[94m--> [0msrc/main.rs:9:24
+  [1m[94m|[0m
+[1m[94m9[0m [1m[94m|[0m     let missing: u32 = -1;
+  [1m[94m|[0m                        [1m[91m^^[0m [1m[91mcannot apply unary operator `-`[0m
+  [1m[94m|[0m
+  [1m[94m= [0m[1mnote[0m: unsigned values cannot be negated
+[1m[96mhelp[0m: you may have meant the maximum value of `u32`
+  [1m[94m|[0m
+[1m[94m9[0m [91m- [0m    let missing: u32 = [91m-1[0m;
+[1m[94m9[0m [92m+ [0m    let missing: u32 = [92mu32::MAX[0m;
+  [1m[94m|[0m
+
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+  [1m[94m--> [0msrc/main.rs:11:16
+   [1m[94m|[0m
+[1m[94m11[0m [1m[94m|[0m     map.insert("key", 1);
+   [1m[94m|[0m         [1m[94m------[0m [1m[91m^^^^^[0m [1m[91mexpected `String`, found `&str`[0m
+   [1m[94m|[0m         [1m[94m|[0m
+   [1m[94m|[0m         [1m[94marguments to this method are incorrect[0m
+   [1m[94m|[0m
+[1m[92mnote[0m: method defined here
+  [1m[94m--> [0m/rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/collections/hash/map.rs:1333:11
+[1m[96mhelp[0m: try using a conversion method
+   [1m[94m|[0m
+[1m[94m11[0m [1m[94m| [0m    map.insert("key"[92m.to_string()[0m, 1);
+   [1m[94m|[0m                     [92m++++++++++++[0m
+
+[1m[91merror[E0425][0m[1m: cannot find function `undefined_function` in this scope[0m
+  [1m[94m--> [0msrc/main.rs:12:5
+   [1m[94m|[0m
+[1m[94m12[0m [1m[94m|[0m     undefined_function(3);
+   [1m[94m|[0m     [1m[91m^^^^^^^^^^^^^^^^^^[0m [1m[91mnot found in this scope[0m
+
+[1mSome errors have detailed explanations: E0308, E0425, E0600.[0m
+[1mFor more information about an error, try `rustc --explain E0308`.[0m
+[1m[91merror[0m: could not compile `leanfx` (bin "leanfx") due to 4 previous errors

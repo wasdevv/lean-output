@@ -1,0 +1,86 @@
+commit 87209f805948bf13b8c26b3dde74c8f897918ee0
+Author: Washington <contatxpriv@gmail.com>
+Date:   Sat Jul 11 20:36:04 2026 -0300
+
+    F6: CodeMirror 6 editor — syntax highlight while editing
+    
+    The file editor mounts CodeMirror (one-dark theme, line numbers,
+    bracket matching, history, indent-with-tab) over the hidden textarea
+    that remains the form field for the fetch save flow. Languages:
+    Ruby/YAML via legacy-modes StreamLanguage; JS/TS, HTML/ERB, CSS, JSON
+    and Markdown via dedicated packages. All vendored through importmap —
+    no Node in the asset pipeline. Autocomplete stays out of this cut.
+    
+    Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 78b5d44..0d5af66 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -101,7 +101,7 @@ Fluxo: hub desenha → spokes independentes em paralelo (ex.: backend + UI), dep
+ | F3 terminal pro (busca Ctrl+Shift+F, weblinks, split shell) + notificações de término | ✅ |
+ | F4 review na tab Diff (comentários → agente) + PR via `gh` (botão Create PR) | ✅ |
+ | F5 preview pane (iframe do dev server da worktree) | pendente |
+-| F6 editor CodeMirror (highlight editável, autocomplete) | pendente |
++| F6 editor CodeMirror (highlight editável) | ✅ highlight/edição (CM6 vendorado via importmap, tema one-dark, Ruby/YAML via legacy-modes StreamLanguage, textarea escondida segue sendo o campo do form); autocomplete pendente |
+ 
+ ## Lições / pegadinhas (não re-descobrir)
+ 
+diff --git a/app/views/file_browser/_viewer.html.erb b/app/views/file_browser/_viewer.html.erb
+index 7c5c1f2..00d106e 100644
+--- a/app/views/file_browser/_viewer.html.erb
++++ b/app/views/file_browser/_viewer.html.erb
+@@ -14,6 +14,7 @@
+   <%= form_with url: explorer_files_path(@explorer_context), method: :patch,
+       data: { controller: "editor",
+               action: "submit->editor#submit keydown.ctrl+s->editor#saveNow",
++              editor_path_value: selected_path,
+               editor_modified_label_value: t(".status_modified"),
+               editor_saving_label_value: t(".status_saving"),
+               editor_saved_label_value: t(".status_saved"),
+@@ -27,8 +28,9 @@
+     </div>
+ 
+     <%= f.hidden_field :path, value: selected_path %>
+-    <%= f.text_area :content, value: file.content, spellcheck: false,
+-        data: { action: "input->editor#changed" },
+-        class: "min-h-0 w-full flex-1 resize-none bg-[#0c0c0e] p-4 font-mono text-xs leading-5 text-zinc-200 focus:outline-none" %>
++    <%# CodeMirror is the editing surface; the textarea stays hidden as the
++        form field the save request reads from. %>
++    <%= f.text_area :content, value: file.content, data: { editor_target: "source" }, class: "hidden" %>
++    <div data-editor-target="mount" class="min-h-0 flex-1 overflow-hidden [&_.cm-editor]:h-full"></div>
+   <% end %>
+ <% end %>
+diff --git a/config/importmap.rb b/config/importmap.rb
+index 3c72bc3..16feec9 100644
+--- a/config/importmap.rb
++++ b/config/importmap.rb
+@@ -10,3 +10,28 @@ pin "@xterm/addon-fit", to: "@xterm--addon-fit.js" # @0.11.0
+ pin "@xterm/xterm", to: "@xterm--xterm.js" # @6.0.0
+ pin "@xterm/addon-search", to: "@xterm--addon-search.js" # @0.16.0
+ pin "@xterm/addon-web-links", to: "@xterm--addon-web-links.js" # @0.12.0
++pin "@codemirror/commands", to: "@codemirror--commands.js" # @6.10.4
++pin "@codemirror/lang-css", to: "@codemirror--lang-css.js" # @6.3.1
++pin "@codemirror/lang-html", to: "@codemirror--lang-html.js" # @6.4.11
++pin "@codemirror/lang-javascript", to: "@codemirror--lang-javascript.js" # @6.2.5
++pin "@codemirror/lang-json", to: "@codemirror--lang-json.js" # @6.0.2
++pin "@codemirror/lang-markdown", to: "@codemirror--lang-markdown.js" # @6.5.0
++pin "@codemirror/language", to: "@codemirror--language.js" # @6.12.4
++pin "@codemirror/legacy-modes/mode/ruby", to: "@codemirror--legacy-modes--mode--ruby.js" # @6.5.3
++pin "@codemirror/legacy-modes/mode/yaml", to: "@codemirror--legacy-modes--mode--yaml.js" # @6.5.3
++pin "@codemirror/state", to: "@codemirror--state.js" # @6.7.1
++pin "@codemirror/theme-one-dark", to: "@codemirror--theme-one-dark.js" # @6.1.3
++pin "@codemirror/view", to: "@codemirror--view.js" # @6.43.6
++pin "@codemirror/autocomplete", to: "@codemirror--autocomplete.js" # @6.20.3
++pin "@lezer/common", to: "@lezer--common.js" # @1.5.2
++pin "@lezer/css", to: "@lezer--css.js" # @1.3.4
++pin "@lezer/highlight", to: "@lezer--highlight.js" # @1.2.3
++pin "@lezer/html", to: "@lezer--html.js" # @1.3.13
++pin "@lezer/javascript", to: "@lezer--javascript.js" # @1.5.4
++pin "@lezer/json", to: "@lezer--json.js" # @1.0.3
++pin "@lezer/lr", to: "@lezer--lr.js" # @1.4.10
++pin "@lezer/markdown", to: "@lezer--markdown.js" # @1.7.1
++pin "@marijn/find-cluster-break", to: "@marijn--find-cluster-break.js" # @1.0.3
++pin "crelt" # @1.0.7
++pin "style-mod" # @4.1.3
++pin "w3c-keyname" # @2.2.8

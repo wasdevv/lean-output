@@ -1,6 +1,6 @@
 # lean-output
 
-**A Claude Code plugin that compresses RSpec, RuboCop and Brakeman outputs before they reach the model — fewer tokens, zero lost failures.**
+**A Claude Code plugin that compresses RSpec, RuboCop, Brakeman and `git diff` outputs before they reach the model — fewer tokens, zero lost failures.**
 
 Test suites are chatty. A single failing RSpec run ships progress dots, seeds, profiling tables, SimpleCov reports and gem backtraces into your context window — thousands of tokens the model doesn't need. lean-output rewrites those outputs on the fly via a `PostToolUse` hook, keeping **every failure, message and `file:line`** and dropping everything else.
 
@@ -41,11 +41,15 @@ Measured on real outputs captured from a Rails 8 app (`bin/bench`):
 | brakeman — 5 warnings | 3041 → 631 | 760 → 155 | **-79%** |
 | brakeman — warnings (ANSI) | 3811 → 631 | 953 → 155 | **-83%** |
 | brakeman — clean scan | 1922 → 66 | 481 → 16 | **-97%** |
+| git show — vendored deps | 62600 → 9700 | 15642 → 2416 | **-85%** |
+| git show — no generated | 4886 | 1215 | passthrough² |
 
 ¹ estimate (chars / 4); run `ANTHROPIC_API_KEY=... bin/bench` for exact counts via the `count_tokens` API.
 ² Untouched: small outputs are never rewritten.
 
-The benchmark also enforces a **zero-loss guarantee**: it fails if any failure/offense `file:line` from the original output is missing from the compressed version.
+The benchmark also enforces a **zero-loss guarantee**: it fails if any failure/offense `file:line` — or any changed file path — from the original output is missing from the compressed version.
+
+Diffs are where the numbers get absurd, because a single vendored dependency dwarfs everything a reviewer actually reads. The full commit the fixture above was sliced from (a CodeMirror 6 vendoring: 29 files, 233 hand-written insertions) goes from **651,833 B to 13,247 B — -97%**, roughly **163k tokens down to 3.3k**. Uncompressed it does not fit in a review at all.
 
 ## Install
 
@@ -58,11 +62,12 @@ Requires Ruby ≥ 3.0 on your PATH. The hook runs on pure stdlib — no gems, no
 
 ## How it works
 
-Hooks on `PostToolUse` **and** `PostToolUseFailure` intercept every Bash tool result — the failure event matters most, since a failing suite exits nonzero and never reaches `PostToolUse`. A detector matches the command (`rspec` / `rubocop` / `brakeman`) **and** sniffs the output for the tool's summary line — both must agree, otherwise nothing happens. When a compressor applies:
+Hooks on `PostToolUse` **and** `PostToolUseFailure` intercept every Bash tool result — the failure event matters most, since a failing suite exits nonzero and never reaches `PostToolUse`. A detector matches the command (`rspec` / `rubocop` / `brakeman` / `git diff|show`) **and** sniffs the output for the tool's summary line — both must agree, otherwise nothing happens. When a compressor applies:
 
 - **RSpec** — keeps the summary, every failure (description, `Failure/Error` source, expectation/exception message, first project frame, rerun location). Drops dots, seeds, profiling, coverage noise, gem/support frames and diff blocks.
 - **RuboCop** — keeps the summary and every offense location, grouped by file and deduped by cop/message (`3:1, 7:2, 9:5 Layout/TrailingWhitespace: ...`). Drops code excerpts, carets and progress output.
 - **Brakeman** — keeps the warning count and every warning (line, confidence, category, message, vulnerable code) grouped by file. Drops the progress log, the ~1kB "Checks Run" list and the report boilerplate.
+- **git diff / git show** — passes every hand-written hunk through **byte for byte**, and collapses the body of generated files to one line (`[lean-output] generated file — +12/-3 lines, body collapsed`), keeping their `diff --git` header so nothing disappears silently. Collapsed: `vendor/`, `node_modules/`, `dist/`, `coverage/`, `app/assets/builds/`, lockfiles (`Gemfile.lock`, `Cargo.lock`, `package-lock.json`, `yarn.lock`, `go.sum`, …), `db/structure.sql`, `*.min.js|css` and source maps. **`db/schema.rb` is deliberately not collapsed** — it is how a Rails reviewer sees what a migration actually did.
 
 ## Fail-safe by design
 
@@ -90,9 +95,11 @@ Troubleshooting: if the hook never fires, check that your project is trusted and
 
 ## Em português
 
-**Plugin de Claude Code que comprime saídas de RSpec, RuboCop e Brakeman antes de chegarem ao modelo — menos tokens, nenhuma falha perdida.**
+**Plugin de Claude Code que comprime saídas de RSpec, RuboCop, Brakeman e `git diff` antes de chegarem ao modelo — menos tokens, nenhuma falha perdida.**
 
 Saídas de suite de teste são verbosas: dots de progresso, seed, tabelas de profiling, relatório do SimpleCov, backtraces de gems. O lean-output reescreve essas saídas via hooks `PostToolUse`/`PostToolUseFailure`, preservando **toda falha, mensagem e `file:line`** e descartando o resto. Em sessão real no pipeline_hq (CRM Rails 8): suite de 103 exemplos com 1 falha foi de **3.2kB para 346B (-90%)** — e o modelo ainda apontou o `file:line` exato da falha. No benchmark: **80–96%** em RSpec, **70–76%** em RuboCop e **79–97%** em Brakeman (tabela acima).
+
+O compressor de diff é o que mais economiza, porque uma dependência vendorada sozinha é maior que tudo que um revisor de fato lê. Hunk escrito à mão passa **byte a byte**; corpo de arquivo gerado (`vendor/`, lockfile, `app/assets/builds/`, `*.min.js`, source map) vira uma linha que ainda mostra o caminho e o `+N/-M`. Num commit real de vendoring do CodeMirror 6: **651.833 B → 13.247 B (-97%)**, de ~163k para ~3,3k tokens. `db/schema.rb` fica de fora de propósito — é o arquivo que mostra o que a migration realmente fez.
 
 Instalação:
 

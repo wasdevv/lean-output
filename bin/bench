@@ -18,7 +18,9 @@ SCENARIOS = [
   { name: "rubocop — clean run",       command: "bundle exec rubocop", file: "rubocop_clean.txt" },
   { name: "brakeman — 5 warnings",     command: "bundle exec brakeman", file: "brakeman_warnings.txt" },
   { name: "brakeman — warnings (ANSI)", command: "bundle exec brakeman", file: "brakeman_warnings_ansi.txt" },
-  { name: "brakeman — clean scan",     command: "bundle exec brakeman", file: "brakeman_clean.txt" }
+  { name: "brakeman — clean scan",     command: "bundle exec brakeman", file: "brakeman_clean.txt" },
+  { name: "git show — vendored deps",  command: "git show 87209f8",     file: "git_show_vendored.txt", must_hit_target: true },
+  { name: "git show — no generated",   command: "git show 87209f8",     file: "git_show_plain.txt" }
 ].freeze
 
 TARGET = 0.80
@@ -45,6 +47,9 @@ def lost_locations(original, compressed)
   locations = plain.scan(/^rspec (\S+) #/).flatten
   plain.scan(LeanOutput::Compressors::Rubocop::OFFENSE) { |file, loc, _| locations << "#{file} #{loc}" }
   plain.scan(/^File: (\S+)\nLine: (\d+)/) { |file, line| locations << "#{file} #{line}" }
+  # A collapsed diff block must still name its file, or the reviewer cannot
+  # tell that a generated artifact changed at all.
+  locations.concat(plain.scan(%r{^diff --git a/(\S+)}).flatten)
   locations.reject do |loc|
     loc.split(" ").all? { |part| compressed.include?(part) }
   end

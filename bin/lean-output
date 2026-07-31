@@ -1,0 +1,22 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# CLI over LeanOutput.compress, for callers that aren't Ruby. Reads the output
+# on stdin, writes the compressed version on stdout.
+#
+#   bundle exec rspec 2>&1 | lean-output --command "bundle exec rspec" --budget 8000
+
+require 'optparse'
+require_relative '../lib/lean_output'
+
+options = {}
+OptionParser.new do |parser|
+  parser.banner = 'usage: lean-output [--command CMD] [--budget BYTES] [--footer] < output'
+  parser.on('--command CMD', 'command that produced the output; improves detection') { |v| options[:command] = v }
+  parser.on('--budget BYTES', Integer, 'byte ceiling; drops whole entries to fit') { |v| options[:budget] = v }
+  parser.on('--footer', 'append the before/after savings line') { options[:footer] = true }
+  parser.on('-v', '--version') { puts LeanOutput::VERSION; exit 0 }
+  parser.on('-h', '--help') { puts parser; exit 0 }
+end.parse!
+
+print LeanOutput.compress($stdin.read, **options)

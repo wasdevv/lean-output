@@ -4,8 +4,16 @@ module LeanOutput
       COMMAND = %r{(^|[\s/])brakeman(\s|$)}
       SUMMARY = /^Security Warnings: \d+$/
 
+      def self.command_match?(command)
+        command.match?(COMMAND)
+      end
+
+      def self.output_match?(output)
+        Text.plain(output).match?(SUMMARY)
+      end
+
       def self.applicable?(command, output)
-        command.match?(COMMAND) && Text.plain(output).match?(SUMMARY)
+        command_match?(command) && output_match?(output)
       end
 
       def self.compress(output)

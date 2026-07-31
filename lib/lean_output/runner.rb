@@ -1,6 +1,9 @@
 module LeanOutput
   class Runner
     MIN_LINES = 40
+    # An MCP result is often one long line, so a line count would never fire.
+    MIN_BYTES = 2_000
+    MCP_TOOL = /\Amcp__/
     # Only replace the output when it saves at least 30% — below that the
     # rewrite isn't worth the risk of dropping context.
     MAX_RATIO = 0.7
@@ -8,15 +11,13 @@ module LeanOutput
     def self.call(payload)
       return nil if ENV["LEAN_OUTPUT_DISABLE"] == "1"
       return nil unless payload.is_a?(Hash)
-      return nil unless payload["tool_name"] == "Bash"
 
-      command = payload.dig("tool_input", "command").to_s
+      tool = payload["tool_name"].to_s
       # Failed tool calls (PostToolUseFailure) carry the output in "error".
       output = extract_output(payload["tool_response"] || payload["error"]).to_s
-      return nil if command.empty? || output.lines.size < MIN_LINES
 
-      compressor = Detector.for(command, output) or return nil
-      compressed = compressor.compress(output) or return nil
+      compressed = rewrite(tool, payload, output)
+      return nil if compressed.nil? || compressed.equal?(output)
       return nil unless compressed.bytesize < output.bytesize * MAX_RATIO
 
       exit_line = output[/\AExit code \d+/]
@@ -32,6 +33,21 @@ module LeanOutput
       }
     end
 
+    # An MCP tool carries no command, so the text alone has to identify itself.
+    def self.rewrite(tool, payload, output)
+      case tool
+      when "Bash"
+        command = payload.dig("tool_input", "command").to_s
+        return nil if command.empty? || output.lines.size < MIN_LINES
+
+        LeanOutput.compress(output, command: command)
+      when MCP_TOOL
+        return nil if output.bytesize < MIN_BYTES
+
+        LeanOutput.compress(output)
+      end
+    end
+
     def self.extract_output(response)
       case response
       when String then response
@@ -42,11 +58,7 @@ module LeanOutput
 
     def self.footer(before, after)
       saved = (100.0 * (before - after) / before).round
-      "\n[lean-output] #{human(before)} → #{human(after)} (-#{saved}%)\n"
-    end
-
-    def self.human(bytes)
-      bytes >= 1024 ? format("%.1fkB", bytes / 1024.0) : "#{bytes}B"
+      "\n[lean-output] #{Text.human(before)} → #{Text.human(after)} (-#{saved}%)\n"
     end
   end
 end

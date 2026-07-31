@@ -81,6 +81,44 @@ Hooks on `PostToolUse` **and** `PostToolUseFailure` intercept every Bash tool re
 - **git diff / git show** — passes every hand-written hunk through **byte for byte**, and collapses the body of generated files to one line (`[lean-output] generated file — +12/-3 lines, body collapsed`), keeping their `diff --git` header so nothing disappears silently. Collapsed: `vendor/`, `node_modules/`, `dist/`, `coverage/`, `app/assets/builds/`, lockfiles (`Gemfile.lock`, `Cargo.lock`, `package-lock.json`, `yarn.lock`, `go.sum`, …), `db/structure.sql`, `*.min.js|css` and source maps. **`db/schema.rb` is deliberately not collapsed** — it is how a Rails reviewer sees what a migration actually did.
 - **cargo** (`build`, `check`, `clippy`, `test`, `run`) — keeps the diagnostic count, and for each one the `error[CODE]`/`warning` header, its `--> file:line:col`, the caret labels (the text that explains *why*, e.g. `expected i32, found &str`) and every `note:`/`help:`. Drops the echoed source lines, the caret art itself, suggestion diffs and `Compiling`/`Finished` progress. Refuses to touch output that carries **libtest results** (`running N tests`, `test result:`) or a successful `cargo run`, because panic sites and program stdout are not rustc art and cannot be rebuilt.
 
+## Use it as a library
+
+The hook is one caller. Anything that injects tool output into a prompt has the same problem and usually solves it with `byteslice`, which amputates whatever sits at the cut — typically the failure message the reader needed. `LeanOutput.compress` is the same engine behind a plain API:
+
+```ruby
+LeanOutput.compress(text, command: nil, budget: nil, footer: false) # => String
+```
+
+```ruby
+gem "lean_output", github: "wasdevv/lean-output"
+```
+
+```ruby
+# an agent orchestrator briefing a retry, instead of stdout.byteslice(0, 8_000)
+LeanOutput.compress(stdout, command: "bundle exec rspec", budget: 8_000)
+```
+
+- **Always a String.** Passthrough returns the input itself; an unexpected error degrades to the input rather than raising. It drops in wherever you used to truncate.
+- **`command` is optional.** Without it the text alone has to identify the tool, under the same unambiguity rule the hook uses: two candidates means passthrough. Cargo never self-identifies — telling a rustc diagnostic from a successful `cargo run` followed by program stdout needs the subcommand.
+- **`budget` is a byte ceiling spent on whole entries.** Compressed output is a summary plus blank-line-separated entries (one failure, one file's offenses, one diagnostic), so it keeps the summary and as many whole entries as fit, then says `[lean-output] 12 of 19 entries omitted (budget 8.0kB)`. For text no compressor understands it keeps both ends — the invocation and early errors at the head, the summary and exit status at the tail — and drops only the middle.
+- **No line-count floor.** The hook's 40-line minimum and 30% minimum saving are policy in `Runner`; a caller asking for compression has already decided the text is too long.
+
+Same thing from a shell, for callers that aren't Ruby:
+
+```sh
+bundle exec rspec 2>&1 | lean-output --command "bundle exec rspec" --budget 8000
+```
+
+Head to head on the fixture in this repo, against a 40-line tail — the shape most orchestrators reach for:
+
+| | bytes | failure messages kept |
+|---|---|---|
+| original | 4610 | 3 of 3 |
+| `lines.last(40)` | 1979 | **0 of 3** |
+| `LeanOutput.compress` | 877 | 3 of 3 |
+
+The tail keeps the profiling table and the coverage report and drops the entire `Failures:` section — the reader learns *which* specs failed, never *why*.
+
 ## Fail-safe by design
 
 Compression is only worth it if it can never hurt you:

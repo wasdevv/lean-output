@@ -1,0 +1,8 @@
+[
+  { "id": 1, "table_name": "posts", "definition": "CREATE TABLE posts (\n  id uuid PRIMARY KEY,\n  body text NOT NULL\n);" },
+  { "id": 2, "table_name": "likes", "definition": "CREATE TABLE likes (\n  id uuid PRIMARY KEY,\n  post_id uuid NOT NULL\n);" },
+  { "id": 3, "table_name": "follows", "definition": "CREATE TABLE follows (\n  id uuid PRIMARY KEY,\n  follower_id uuid NOT NULL\n);" },
+  { "id": 4, "table_name": "reposts", "definition": "CREATE TABLE reposts (\n  id uuid PRIMARY KEY,\n  post_id uuid NOT NULL\n);" },
+  { "id": 5, "table_name": "profiles", "definition": "CREATE TABLE profiles (\n  id uuid PRIMARY KEY,\n  handle text NOT NULL\n);" },
+  { "id": 6, "table_name": "notifications", "definition": "CREATE TABLE notifications (\n  id uuid PRIMARY KEY,\n  kind text NOT NULL\n);" }
+]

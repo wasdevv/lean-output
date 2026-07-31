@@ -9,11 +9,29 @@
             "command": "ruby ${CLAUDE_PLUGIN_ROOT}/bin/compress"
           }
         ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ruby ${CLAUDE_PLUGIN_ROOT}/bin/compress"
+          }
+        ]
       }
     ],
     "PostToolUseFailure": [
       {
         "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ruby ${CLAUDE_PLUGIN_ROOT}/bin/compress"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*",
         "hooks": [
           {
             "type": "command",

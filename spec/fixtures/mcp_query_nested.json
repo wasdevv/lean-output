@@ -1,0 +1,38 @@
+[
+  {
+    "id": "d766ee42-613e-4de7-b64a-f425b47e02ba",
+    "handle": "hang",
+    "settings": { "theme": "dark", "locale": "en-US", "digest": "weekly" },
+    "created_at": "2026-07-30T07:19:40Z"
+  },
+  {
+    "id": "8c1f0a55-2b3d-4e91-9a77-11c0e5a3d244",
+    "handle": "was",
+    "settings": { "theme": "light", "locale": "pt-BR", "digest": "daily" },
+    "created_at": "2026-07-30T07:21:02Z"
+  },
+  {
+    "id": "3ab99c17-77e4-4c02-8f5b-6d2a0b8e91cc",
+    "handle": "karpathy",
+    "settings": { "theme": "dark", "locale": "en-US", "digest": "off" },
+    "created_at": "2026-07-30T07:22:15Z"
+  },
+  {
+    "id": "5f2e8d90-4c1a-4b77-9e03-a7c6b1f2d885",
+    "handle": "dhh",
+    "settings": { "theme": "dark", "locale": "da-DK", "digest": "weekly" },
+    "created_at": "2026-07-30T07:23:48Z"
+  },
+  {
+    "id": "b04a7e13-9d55-4f68-8c21-e3f9a0c47b16",
+    "handle": "tenderlove",
+    "settings": { "theme": "light", "locale": "en-US", "digest": "daily" },
+    "created_at": "2026-07-30T07:25:31Z"
+  },
+  {
+    "id": "e91c3f28-0a6b-4d14-b7f9-c2508ad63e77",
+    "handle": "matz",
+    "settings": { "theme": "dark", "locale": "ja-JP", "digest": "weekly" },
+    "created_at": "2026-07-30T07:27:09Z"
+  }
+]

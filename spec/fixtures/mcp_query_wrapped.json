@@ -1,0 +1,365 @@
+{
+  "rows": [
+    {
+      "table_schema": "public",
+      "table_name": "profiles",
+      "ordinal_position": 1,
+      "column_name": "id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "table_schema": "public",
+      "table_name": "profiles",
+      "ordinal_position": 2,
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "profiles",
+      "ordinal_position": 3,
+      "column_name": "handle",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "profiles",
+      "ordinal_position": 4,
+      "column_name": "display_name",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "profiles",
+      "ordinal_position": 5,
+      "column_name": "bio",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "profiles",
+      "ordinal_position": 6,
+      "column_name": "avatar_url",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "profiles",
+      "ordinal_position": 7,
+      "column_name": "followers_count",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "column_default": "0"
+    },
+    {
+      "table_schema": "public",
+      "table_name": "profiles",
+      "ordinal_position": 8,
+      "column_name": "following_count",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "column_default": "0"
+    },
+    {
+      "table_schema": "public",
+      "table_name": "profiles",
+      "ordinal_position": 9,
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "table_schema": "public",
+      "table_name": "profiles",
+      "ordinal_position": 10,
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "table_schema": "public",
+      "table_name": "posts",
+      "ordinal_position": 1,
+      "column_name": "id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "table_schema": "public",
+      "table_name": "posts",
+      "ordinal_position": 2,
+      "column_name": "author_id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "posts",
+      "ordinal_position": 3,
+      "column_name": "parent_id",
+      "data_type": "uuid",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "posts",
+      "ordinal_position": 4,
+      "column_name": "body",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "posts",
+      "ordinal_position": 5,
+      "column_name": "media_bucket",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "posts",
+      "ordinal_position": 6,
+      "column_name": "like_count",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "column_default": "0"
+    },
+    {
+      "table_schema": "public",
+      "table_name": "posts",
+      "ordinal_position": 7,
+      "column_name": "repost_count",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "column_default": "0"
+    },
+    {
+      "table_schema": "public",
+      "table_name": "posts",
+      "ordinal_position": 8,
+      "column_name": "reply_count",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "column_default": "0"
+    },
+    {
+      "table_schema": "public",
+      "table_name": "posts",
+      "ordinal_position": 9,
+      "column_name": "is_deleted",
+      "data_type": "boolean",
+      "is_nullable": "NO",
+      "column_default": "false"
+    },
+    {
+      "table_schema": "public",
+      "table_name": "posts",
+      "ordinal_position": 10,
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "table_schema": "public",
+      "table_name": "likes",
+      "ordinal_position": 1,
+      "column_name": "id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "table_schema": "public",
+      "table_name": "likes",
+      "ordinal_position": 2,
+      "column_name": "post_id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "likes",
+      "ordinal_position": 3,
+      "column_name": "profile_id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "likes",
+      "ordinal_position": 4,
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "table_schema": "public",
+      "table_name": "reposts",
+      "ordinal_position": 1,
+      "column_name": "id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "table_schema": "public",
+      "table_name": "reposts",
+      "ordinal_position": 2,
+      "column_name": "post_id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "reposts",
+      "ordinal_position": 3,
+      "column_name": "profile_id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "reposts",
+      "ordinal_position": 4,
+      "column_name": "comment",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "reposts",
+      "ordinal_position": 5,
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "table_schema": "public",
+      "table_name": "follows",
+      "ordinal_position": 1,
+      "column_name": "id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "table_schema": "public",
+      "table_name": "follows",
+      "ordinal_position": 2,
+      "column_name": "follower_id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "follows",
+      "ordinal_position": 3,
+      "column_name": "followee_id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "follows",
+      "ordinal_position": 4,
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "table_schema": "public",
+      "table_name": "notifications",
+      "ordinal_position": 1,
+      "column_name": "id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "table_schema": "public",
+      "table_name": "notifications",
+      "ordinal_position": 2,
+      "column_name": "profile_id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "notifications",
+      "ordinal_position": 3,
+      "column_name": "actor_id",
+      "data_type": "uuid",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "notifications",
+      "ordinal_position": 4,
+      "column_name": "kind",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "notifications",
+      "ordinal_position": 5,
+      "column_name": "post_id",
+      "data_type": "uuid",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "notifications",
+      "ordinal_position": 6,
+      "column_name": "read_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_schema": "public",
+      "table_name": "notifications",
+      "ordinal_position": 7,
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    }
+  ],
+  "row_count": 40
+}

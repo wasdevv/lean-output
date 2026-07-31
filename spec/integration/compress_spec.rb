@@ -65,6 +65,48 @@ RSpec.describe "bin/compress" do
     expect(JSON.parse(stdout).dig("hookSpecificOutput", "updatedToolOutput")).to include("3 failures")
   end
 
+  describe "MCP tool results" do
+    def mcp_payload(tool, output)
+      {
+        "tool_name" => tool,
+        "tool_input" => { "query" => "select * from information_schema.columns" },
+        "tool_response" => [{ "type" => "text", "text" => output }]
+      }
+    end
+
+    it "compresses a row set returned as content blocks" do
+      original = fixture("mcp_query_rows.json")
+      stdout, _, status = run_hook(mcp_payload("mcp__insforge__query", original))
+
+      expect(status.exitstatus).to eq(0)
+      updated = JSON.parse(stdout).dig("hookSpecificOutput", "updatedToolOutput")
+      expect(updated).to include("JSON rows: 40 rows, 7 columns")
+      expect(updated.bytesize).to be < original.bytesize * 0.45
+    end
+
+    it "keeps every value the query returned" do
+      original = fixture("mcp_query_rows.json")
+      stdout, = run_hook(mcp_payload("mcp__insforge__query", original))
+      updated = JSON.parse(stdout).dig("hookSpecificOutput", "updatedToolOutput")
+
+      JSON.parse(original).each do |row|
+        row.each_value { |value| expect(updated).to include(value.nil? ? "null" : value.to_s) }
+      end
+    end
+
+    it "stays silent for a result a table cannot represent" do
+      stdout, _, status = run_hook(mcp_payload("mcp__insforge__query", fixture("mcp_query_nested.json")))
+      expect(status.exitstatus).to eq(0)
+      expect(stdout).to be_empty
+    end
+
+    it "stays silent below the byte gate" do
+      stdout, _, status = run_hook(mcp_payload("mcp__insforge__query", JSON.generate([{ "a" => 1 }] * 6)))
+      expect(status.exitstatus).to eq(0)
+      expect(stdout).to be_empty
+    end
+  end
+
   describe "passthrough (no stdout, exit 0)" do
     it "stays silent for small outputs" do
       stdout, _, status = run_hook(payload_for("rspec", "3 examples, 0 failures\n"))

@@ -25,7 +25,9 @@ SCENARIOS = [
   { name: "cargo — 4 errors (ANSI)",   command: "cargo build",          file: "cargo_errors_ansi.txt",    target: 0.60, expect_locations: true },
   { name: "cargo — 7 warnings",        command: "cargo clippy",         file: "cargo_warnings.txt",       target: 0.35, expect_locations: true },
   { name: "cargo — warnings (ANSI)",   command: "cargo clippy",         file: "cargo_warnings_ansi.txt",  target: 0.55, expect_locations: true },
-  { name: "cargo — clean build",       command: "cargo build",          file: "cargo_clean.txt" }
+  { name: "cargo — clean build",       command: "cargo build",          file: "cargo_clean.txt" },
+  { name: "mcp query — 40 rows",       tool: "mcp__insforge__query",    file: "mcp_query_rows.json",    target: 0.60, expect_cells: true },
+  { name: "mcp query — enveloped",     tool: "mcp__insforge__query",    file: "mcp_query_wrapped.json", target: 0.65, expect_cells: true }
 ].freeze
 
 # Output that must never be rewritten: either the compressor cannot rebuild it,
@@ -41,7 +43,11 @@ NEGATIVE = [
     files: %w[cargo_errors.txt rspec_failures.txt],
     why: "two compressors match, so the buffer is ambiguous" },
   { name: "short output",                 command: "cargo build", file: nil,
-    why: "below the minimum line count" }
+    why: "below the minimum line count" },
+  { name: "mcp query — nested values",    tool: "mcp__insforge__query", file: "mcp_query_nested.json",
+    why: "a nested object has no column to sit in" },
+  { name: "mcp query — multiline values", tool: "mcp__insforge__query", file: "mcp_query_multiline.json",
+    why: "a newline inside a cell would split one row across two lines" }
 ].freeze
 
 TARGET = 0.80
@@ -75,6 +81,32 @@ def all_locations(original)
   locations
 end
 
+# A row set has no file:line to lose; what must survive is the schema and every
+# cell. Checked verbatim rather than word by word, because a value like
+# "timestamp with time zone" would satisfy a per-word check by accident.
+def json_cells(original)
+  parsed = JSON.parse(original)
+  rows = parsed.is_a?(Hash) ? parsed.values.find { |value| value.is_a?(Array) } : parsed
+  return [] unless rows.is_a?(Array) && !rows.empty? && rows.all?(Hash)
+
+  values = rows.flat_map { |row| row.values.map { |value| value.nil? ? "null" : value.to_s } }
+  (rows.first.keys + values).uniq
+rescue JSON::ParserError
+  []
+end
+
+# MCP results arrive as content blocks and carry no command; Bash results carry
+# the command and nothing else.
+def payload_for(scenario, original)
+  if scenario[:tool]
+    { "tool_name" => scenario[:tool], "tool_input" => {},
+      "tool_response" => [{ "type" => "text", "text" => original }] }
+  else
+    { "tool_name" => "Bash", "tool_input" => { "command" => scenario[:command] },
+      "tool_response" => original }
+  end
+end
+
 def lost(original, compressed)
   extracted = all_locations(original)
   missing = extracted.reject do |loc|
@@ -90,11 +122,7 @@ rows = []
 
 SCENARIOS.each do |scenario|
   original = File.read(File.join(FIXTURES, scenario[:file]))
-  result = LeanOutput::Runner.call(
-    "tool_name" => "Bash",
-    "tool_input" => { "command" => scenario[:command] },
-    "tool_response" => original
-  )
+  result = LeanOutput::Runner.call(payload_for(scenario, original))
 
   unless result
     rows << [scenario[:name], original.bytesize, nil, count_tokens(original), nil, nil]
@@ -117,6 +145,18 @@ SCENARIOS.each do |scenario|
     failed = true
   end
 
+  cells = json_cells(original)
+  missing_cells = cells.reject { |cell| compressed.include?(cell) }
+  unless missing_cells.empty?
+    warn "LOST CELLS in #{scenario[:file]}: #{missing_cells.take(5).join(", ")}"
+    failed = true
+  end
+
+  if scenario[:expect_cells] && cells.empty?
+    warn "NO CELLS EXTRACTED from #{scenario[:file]}: the invariant is vacuous here"
+    failed = true
+  end
+
   target = scenario[:target] || (scenario[:must_hit_target] ? TARGET : nil)
   if target && reduction < target
     warn "BELOW TARGET in #{scenario[:file]}: -#{(reduction * 100).round(1)}% (target -#{(target * 100).round}%)"
@@ -136,11 +176,7 @@ NEGATIVE.each do |scenario|
     else
       "error: boom\n --> src/a.rs:1:1\n"
     end
-  result = LeanOutput::Runner.call(
-    "tool_name" => "Bash",
-    "tool_input" => { "command" => scenario[:command] },
-    "tool_response" => original
-  )
+  result = LeanOutput::Runner.call(payload_for(scenario, original))
 
   next unless result
 

@@ -18,8 +18,16 @@ module LeanOutput
         /\.map$/
       )
 
+      def self.command_match?(command)
+        command.match?(COMMAND)
+      end
+
+      def self.output_match?(output)
+        Text.plain(output).match?(HEADER)
+      end
+
       def self.applicable?(command, output)
-        command.match?(COMMAND) && Text.plain(output).match?(HEADER)
+        command_match?(command) && output_match?(output)
       end
 
       def self.compress(output)

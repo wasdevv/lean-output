@@ -4,8 +4,16 @@ module LeanOutput
       COMMAND = %r{(^|[\s/])rubocop(\s|$)}
       SUMMARY = /^\d+ files? inspected.*$/
 
+      def self.command_match?(command)
+        command.match?(COMMAND)
+      end
+
+      def self.output_match?(output)
+        Text.plain(output).match?(SUMMARY)
+      end
+
       def self.applicable?(command, output)
-        command.match?(COMMAND) && Text.plain(output).match?(SUMMARY)
+        command_match?(command) && output_match?(output)
       end
 
       OFFENSE = /^(\S+):(\d+:\d+): \w+: (?:\[Correctable\] )?(.*)$/

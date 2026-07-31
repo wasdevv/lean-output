@@ -47,16 +47,20 @@ module LeanOutput
       # carries libtest results or program stdout gets left alone: this
       # compressor rebuilds diagnostics from art, and would silently drop
       # everything else in the buffer.
-      def self.applicable?(command, output)
-        return false unless command.match?(COMMAND)
-        return false if command.match?(JSON_FORMAT)
+      def self.command_match?(command)
+        command.match?(COMMAND) && !command.match?(JSON_FORMAT)
+      end
 
+      def self.output_match?(output)
         plain = Text.plain(output)
-        return false unless plain.match?(DIAG_HEADER)
-        return false unless plain.match?(ANY_LOCATION)
-        return false if plain.match?(TEST_HARNESS)
+        plain.match?(DIAG_HEADER) && plain.match?(ANY_LOCATION) && !plain.match?(TEST_HARNESS)
+      end
+
+      def self.applicable?(command, output)
+        return false unless command_match?(command)
+        return false unless output_match?(output)
         # A successful `cargo run` is followed by the program's own output.
-        return false if command.match?(RUN_COMMAND) && !plain.match?(COMPILE_ERROR)
+        return false if command.match?(RUN_COMMAND) && !Text.plain(output).match?(COMPILE_ERROR)
 
         true
       end

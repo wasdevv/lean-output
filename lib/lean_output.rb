@@ -8,11 +8,12 @@ require_relative 'lean_output/compressors/brakeman'
 require_relative 'lean_output/compressors/git_diff'
 require_relative 'lean_output/compressors/cargo'
 require_relative 'lean_output/compressors/json_rows'
+require_relative 'lean_output/composite'
 require_relative 'lean_output/detector'
 require_relative 'lean_output/runner'
 
 module LeanOutput
-  VERSION = '0.5.0'
+  VERSION = '0.6.0'
 
   # Entry point for callers outside the Claude Code hook: agent orchestrators
   # injecting tool output into a prompt, CI scripts, log processors.

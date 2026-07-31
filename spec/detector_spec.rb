@@ -32,10 +32,20 @@ RSpec.describe LeanOutput::Detector do
     expect(described_class.for('rubocop -f json app/', rubocop_output)).to be_nil
   end
 
-  it 'returns nil for ambiguous chained commands whose output matches both tools' do
+  it 'builds a composite for a chain that ran each tool in its own segment' do
     chained = 'bundle exec rspec && bundle exec rubocop'
     both = "#{rspec_output}\n#{rubocop_output}"
-    expect(described_class.for(chained, both)).to be_nil
+    expect(described_class.for(chained, both)).to be_a(LeanOutput::Composite)
+  end
+
+  it 'returns nil when a single segment names both tools, which is real ambiguity' do
+    both = "#{rspec_output}\n#{rubocop_output}"
+    expect(described_class.for('bin/ci rspec rubocop', both)).to be_nil
+  end
+
+  it 'keeps returning nil on two matches when the command is gone' do
+    both = "#{rspec_output}\n#{rubocop_output}"
+    expect(described_class.by_output(both)).to be_nil
   end
 
   it 'handles ANSI-colored output' do
@@ -48,9 +58,9 @@ RSpec.describe LeanOutput::Detector do
     expect(compressor).to eq(LeanOutput::Compressors::Cargo)
   end
 
-  it 'returns nil for a chained command whose output matches both Cargo and RSpec' do
+  it 'builds a composite for a chain of cargo and rspec' do
     chained = 'cargo build && bundle exec rspec'
     both = "#{fixture('cargo_errors.txt')}\n#{fixture('rspec_failures.txt')}"
-    expect(described_class.for(chained, both)).to be_nil
+    expect(described_class.for(chained, both)).to be_a(LeanOutput::Composite)
   end
 end

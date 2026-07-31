@@ -27,7 +27,13 @@ SCENARIOS = [
   { name: "cargo — warnings (ANSI)",   command: "cargo clippy",         file: "cargo_warnings_ansi.txt",  target: 0.55, expect_locations: true },
   { name: "cargo — clean build",       command: "cargo build",          file: "cargo_clean.txt" },
   { name: "mcp query — 40 rows",       tool: "mcp__insforge__query",    file: "mcp_query_rows.json",    target: 0.60, expect_cells: true },
-  { name: "mcp query — enveloped",     tool: "mcp__insforge__query",    file: "mcp_query_wrapped.json", target: 0.65, expect_cells: true }
+  { name: "mcp query — enveloped",     tool: "mcp__insforge__query",    file: "mcp_query_wrapped.json", target: 0.65, expect_cells: true },
+  # A chain runs several tools into one buffer. Each is summarised in the order
+  # it ran; the location check is what proves no tool was silently dropped.
+  { name: "chain — rspec+rubocop+brakeman", command: "bundle exec rspec && bundle exec rubocop && bin/brakeman -q",
+    files: %w[rspec_failures.txt rubocop_offenses.txt brakeman_warnings.txt], target: 0.70, expect_locations: true },
+  { name: "chain — cargo+rspec",       command: "cargo build && bundle exec rspec",
+    files: %w[cargo_errors.txt rspec_failures.txt], target: 0.40, expect_locations: true }
 ].freeze
 
 # Output that must never be rewritten: either the compressor cannot rebuild it,
@@ -39,11 +45,17 @@ NEGATIVE = [
     why: "machine-readable output is consumed verbatim" },
   { name: "rspec — JSON format",          command: "bundle exec rspec -f json", file: "rspec_failures.txt",
     why: "machine-readable output is consumed verbatim" },
-  { name: "cargo build && rspec",         command: "cargo build && bundle exec rspec",
-    files: %w[cargo_errors.txt rspec_failures.txt],
-    why: "two compressors match, so the buffer is ambiguous" },
+  { name: "one segment, two tools",       command: "bin/ci rspec rubocop",
+    files: %w[rspec_failures.txt rubocop_offenses.txt],
+    why: "a segment claimed by two tools gives no way to tell which one wrote what" },
+  { name: "chain hidden by quoting",      command: 'bash -c "rspec; rubocop"',
+    files: %w[rspec_failures.txt rubocop_offenses.txt],
+    why: "the segment split misread the command, so where each tool ran is a guess" },
+  { name: "rspec chained with a plain diff", command: "bundle exec rspec && git diff",
+    files: %w[rspec_failures.txt git_show_plain.txt],
+    why: "the diff has nothing to collapse, so the chain would drop it whole" },
   { name: "short output",                 command: "cargo build", file: nil,
-    why: "below the minimum line count" },
+    why: "under both the line count and the byte floor" },
   { name: "mcp query — nested values",    tool: "mcp__insforge__query", file: "mcp_query_nested.json",
     why: "a nested object has no column to sit in" },
   { name: "mcp query — multiline values", tool: "mcp__insforge__query", file: "mcp_query_multiline.json",
@@ -107,6 +119,18 @@ def payload_for(scenario, original)
   end
 end
 
+# A chain scenario stitches one buffer out of several fixtures, the way a single
+# Bash call concatenates the output of every tool it ran.
+def read_fixture(scenario)
+  if scenario[:files]
+    scenario[:files].map { |name| File.read(File.join(FIXTURES, name)) }.join("\n")
+  elsif scenario[:file]
+    File.read(File.join(FIXTURES, scenario[:file]))
+  else
+    "error: boom\n --> src/a.rs:1:1\n"
+  end
+end
+
 def lost(original, compressed)
   extracted = all_locations(original)
   missing = extracted.reject do |loc|
@@ -121,7 +145,8 @@ failed = false
 rows = []
 
 SCENARIOS.each do |scenario|
-  original = File.read(File.join(FIXTURES, scenario[:file]))
+  original = read_fixture(scenario)
+  label = scenario[:file] || scenario[:name]
   result = LeanOutput::Runner.call(payload_for(scenario, original))
 
   unless result
@@ -134,32 +159,32 @@ SCENARIOS.each do |scenario|
 
   extracted, missing = lost(original, compressed)
   unless missing.empty?
-    warn "LOST LOCATIONS in #{scenario[:file]}: #{missing.join(", ")}"
+    warn "LOST LOCATIONS in #{label}: #{missing.join(", ")}"
     failed = true
   end
 
   # A fixture full of failures from which we extract nothing would satisfy the
   # invariant vacuously — the extractor, not the compressor, would be broken.
   if scenario[:expect_locations] && extracted.empty?
-    warn "NO LOCATIONS EXTRACTED from #{scenario[:file]}: the invariant is vacuous here"
+    warn "NO LOCATIONS EXTRACTED from #{label}: the invariant is vacuous here"
     failed = true
   end
 
   cells = json_cells(original)
   missing_cells = cells.reject { |cell| compressed.include?(cell) }
   unless missing_cells.empty?
-    warn "LOST CELLS in #{scenario[:file]}: #{missing_cells.take(5).join(", ")}"
+    warn "LOST CELLS in #{label}: #{missing_cells.take(5).join(", ")}"
     failed = true
   end
 
   if scenario[:expect_cells] && cells.empty?
-    warn "NO CELLS EXTRACTED from #{scenario[:file]}: the invariant is vacuous here"
+    warn "NO CELLS EXTRACTED from #{label}: the invariant is vacuous here"
     failed = true
   end
 
   target = scenario[:target] || (scenario[:must_hit_target] ? TARGET : nil)
   if target && reduction < target
-    warn "BELOW TARGET in #{scenario[:file]}: -#{(reduction * 100).round(1)}% (target -#{(target * 100).round}%)"
+    warn "BELOW TARGET in #{label}: -#{(reduction * 100).round(1)}% (target -#{(target * 100).round}%)"
     failed = true
   end
 
@@ -168,14 +193,7 @@ SCENARIOS.each do |scenario|
 end
 
 NEGATIVE.each do |scenario|
-  original =
-    if scenario[:files]
-      scenario[:files].map { |f| File.read(File.join(FIXTURES, f)) }.join("\n")
-    elsif scenario[:file]
-      File.read(File.join(FIXTURES, scenario[:file]))
-    else
-      "error: boom\n --> src/a.rs:1:1\n"
-    end
+  original = read_fixture(scenario)
   result = LeanOutput::Runner.call(payload_for(scenario, original))
 
   next unless result

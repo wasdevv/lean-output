@@ -14,7 +14,12 @@ module LeanOutput
       return nil if command.match?(JSON_FORMAT)
 
       matches = COMPRESSORS.select { |compressor| compressor.applicable?(command, output) }
-      matches.size == 1 ? matches.first : nil
+      return matches.first if matches.size == 1
+      return nil if matches.empty?
+
+      # More than one tool claims the buffer. When the command ran them in
+      # separate segments that is not ambiguity, it is a chain — see Composite.
+      Composite.build(command, matches)
     end
 
     # For callers holding text whose command is gone — a judge briefing, a CI

@@ -26,6 +26,10 @@ SCENARIOS = [
   { name: "cargo — 7 warnings",        command: "cargo clippy",         file: "cargo_warnings.txt",       target: 0.35, expect_locations: true },
   { name: "cargo — warnings (ANSI)",   command: "cargo clippy",         file: "cargo_warnings_ansi.txt",  target: 0.55, expect_locations: true },
   { name: "cargo — clean build",       command: "cargo build",          file: "cargo_clean.txt" },
+  # Grep is the only lossless compressor: it factors the repeated path out and
+  # keeps every line. So it clears a lower floor, and the target here is modest
+  # on purpose — measured over the corpus the ceiling is about -35%.
+  { name: "grep -rn — repeated paths",  command: 'grep -rn "plain" lib/', file: "grep_hits.txt", target: 0.20, expect_locations: true },
   { name: "mcp query — 40 rows",       tool: "mcp__insforge__query",    file: "mcp_query_rows.json",    target: 0.60, expect_cells: true },
   { name: "mcp query — enveloped",     tool: "mcp__insforge__query",    file: "mcp_query_wrapped.json", target: 0.65, expect_cells: true },
   # A chain runs several tools into one buffer. Each is summarised in the order
@@ -66,7 +70,9 @@ NEGATIVE = [
   { name: "mcp query — nested values",    tool: "mcp__insforge__query", file: "mcp_query_nested.json",
     why: "a nested object has no column to sit in" },
   { name: "mcp query — multiline values", tool: "mcp__insforge__query", file: "mcp_query_multiline.json",
-    why: "a newline inside a cell would split one row across two lines" }
+    why: "a newline inside a cell would split one row across two lines" },
+  { name: "grep — one hit per file",      command: 'grep -rn "def self.summary" lib/', file: "grep_scattered.txt",
+    why: "nothing repeats to factor out; a header per file would grow the buffer" }
 ].freeze
 
 TARGET = 0.80
@@ -97,6 +103,11 @@ def all_locations(original)
   # tell that a generated artifact changed at all.
   locations.concat(plain.scan(%r{^diff --git a/(\S+)}).flatten)
   locations.concat(plain.scan(/^\s+--> (\S+:\d+:\d+)$/).flatten)
+  # A grep hit survives as a file header plus an indented line number, so the
+  # two halves are checked apart. That is the whole loosening the grouping
+  # needed: the invariant is that the location survives, not that it survives
+  # glued together.
+  plain.scan(LeanOutput::Compressors::Grep::HIT) { |file, line| locations << "#{file} #{line}" }
   locations
 end
 

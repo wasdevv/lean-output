@@ -26,5 +26,13 @@ module LeanOutput
     def forward_claim
       nil
     end
+
+    # Whether the rewrite keeps everything it replaces. Almost nothing here
+    # does — a backtrace, a progress line and a banner are all thrown away on
+    # purpose — so the honest default is no, and a compressor that keeps every
+    # line has to say so.
+    def lossless?
+      false
+    end
   end
 end

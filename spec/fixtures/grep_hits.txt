@@ -1,0 +1,40 @@
+lib/lean_output.rb:8:require_relative 'lean_output/spannable'
+lib/lean_output.rb:54:    claimants = candidates(Text.plain(text.to_s), command)
+lib/lean_output.rb:59:    plain = Text.plain(output)
+lib/lean_output.rb:60:    rewrites = candidates(plain, command).filter_map { |compressor| compressor.rewrite(plain) }
+lib/lean_output.rb:63:    Splice.apply(plain, rewrites)
+lib/lean_output.rb:67:  def self.candidates(plain, command)
+lib/lean_output.rb:68:    command ? Detector.for(command.to_s, plain) : Detector.by_output(plain)
+lib/lean_output/splice.rb:4:  # Replaces each compressor's span with its summary and leaves the rest of the
+lib/lean_output/splice.rb:6:  # migration output sits outside every span, so it survives verbatim.
+lib/lean_output/splice.rb:8:  # Two spans that overlap is the one case with no honest answer — the tools
+lib/lean_output/splice.rb:12:    Rewrite = Struct.new(:range, :text)
+lib/lean_output/splice.rb:14:    def self.apply(plain, rewrites)
+lib/lean_output/splice.rb:15:      ordered = rewrites.sort_by { |rewrite| rewrite.range.begin }
+lib/lean_output/splice.rb:21:        out << plain[cursor...rewrite.range.begin]
+lib/lean_output/splice.rb:23:        cursor = rewrite.range.end
+lib/lean_output/splice.rb:25:      out << plain[cursor..]
+lib/lean_output/splice.rb:30:      ordered.each_cons(2).any? { |before, after| before.range.end > after.range.begin }
+lib/lean_output/compressors/json_rows.rb:23:      # sharing a buffer, so the span is simply all of it.
+lib/lean_output/compressors/json_rows.rb:24:      def self.region(plain)
+lib/lean_output/compressors/json_rows.rb:25:        rows(plain) && (0...plain.length)
+lib/lean_output/compressors/json_rows.rb:40:      def self.summary(plain)
+lib/lean_output/compressors/json_rows.rb:41:        rows = rows(plain) or return nil
+lib/lean_output/compressors/brakeman.rb:12:      # Naming the fields rather than accepting any "Word: value" keeps the span
+lib/lean_output/compressors/brakeman.rb:33:        Text.plain(output).match?(SUMMARY)
+lib/lean_output/compressors/brakeman.rb:40:      def self.summary(plain)
+lib/lean_output/compressors/brakeman.rb:41:        count = plain[/^Security Warnings: (\d+)$/, 1] or return nil
+lib/lean_output/compressors/brakeman.rb:42:        errors = plain[/^Errors: (\d+)$/, 1].to_i
+lib/lean_output/compressors/brakeman.rb:47:        parse_warnings(plain).group_by { |w| w[:file] }.each do |file, warnings|
+lib/lean_output/compressors/brakeman.rb:58:      def self.parse_warnings(plain)
+lib/lean_output/compressors/brakeman.rb:59:        section = plain[/^== Warnings ==\n(.*)/m, 1].to_s
+lib/lean_output/compressors/cargo.rb:50:      # distinction a `cargo build && rspec` buffer would have one span
+lib/lean_output/compressors/cargo.rb:67:        plain = Text.plain(output)
+lib/lean_output/compressors/cargo.rb:68:        plain.match?(DIAG_HEADER) && plain.match?(ANY_LOCATION) && !plain.match?(TEST_HARNESS)
+lib/lean_output/compressors/cargo.rb:75:        return false if command.match?(RUN_COMMAND) && !Text.plain(output).match?(COMPILE_ERROR)
+lib/lean_output/compressors/cargo.rb:80:      def self.summary(plain)
+lib/lean_output/compressors/cargo.rb:81:        return nil unless plain.match?(DIAG_HEADER)
+lib/lean_output/compressors/cargo.rb:84:        error_count = plain.each_line.count do |l|
+lib/lean_output/compressors/cargo.rb:88:        warning_count = plain.each_line.count do |l|
+lib/lean_output/compressors/cargo.rb:92:        compile_error = plain[COMPILE_ERROR]
+lib/lean_output/compressors/cargo.rb:104:        parse_diagnostics(plain).each do |diag|

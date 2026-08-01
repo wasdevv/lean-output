@@ -7,10 +7,14 @@ module LeanOutput
   # `rspec && rubocop`, `bin/ci rspec rubocop` and a buffer whose command is
   # gone all resolve the same way, by reading the output.
   class Detector
-    COMPRESSORS = [Compressors::Rspec, Compressors::Rubocop, Compressors::Brakeman, Compressors::GitDiff, Compressors::Cargo].freeze
+    COMPRESSORS = [Compressors::Rspec, Compressors::Rubocop, Compressors::Brakeman, Compressors::GitDiff,
+                   Compressors::Cargo, Compressors::Grep].freeze
     # Cargo is absent on purpose: telling a rustc diagnostic from a successful
     # `cargo run` followed by the program's own stdout needs the subcommand, so
-    # without a command there is no safe way to claim the output.
+    # without a command there is no safe way to claim the output. Grep is absent
+    # for the opposite reason — "path:line: text" is a shape half the tooling
+    # world emits, and without a command naming grep there is nothing to say the
+    # buffer is a hit list rather than a compiler's diagnostics.
     OUTPUT_DETECTABLE = [Compressors::Rspec, Compressors::Rubocop, Compressors::Brakeman, Compressors::GitDiff,
                          Compressors::JsonRows].freeze
     JSON_FORMAT = /(-f|--format)[= ]?j/

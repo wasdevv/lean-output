@@ -1,0 +1,15 @@
+lib/lean_output/compressors/git_diff.rb:63:      def self.summary(plain)
+lib/lean_output/compressors/grep.rb:44:      def self.summary(span)
+lib/lean_output/compressors/cargo.rb:80:      def self.summary(plain)
+lib/lean_output/compressors/brakeman.rb:40:      def self.summary(plain)
+lib/lean_output/compressors/rspec.rb:52:      def self.summary(plain)
+lib/lean_output/compressors/json_rows.rb:40:      def self.summary(plain)
+lib/lean_output/compressors/rubocop.rb:37:      def self.summary(plain)
+lib/lean_output.rb:1:# frozen_string_literal: true
+lib/lean_output/detector.rb:1:# frozen_string_literal: true
+lib/lean_output/splice.rb:1:# frozen_string_literal: true
+lib/lean_output/budget.rb:1:# frozen_string_literal: true
+lib/lean_output/runner.rb:1:# frozen_string_literal: true
+lib/lean_output/spannable.rb:1:# frozen_string_literal: true
+lib/lean_output/shell.rb:1:# frozen_string_literal: true
+lib/lean_output/region.rb:1:# frozen_string_literal: true

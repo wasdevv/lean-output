@@ -11,12 +11,13 @@ require_relative 'lean_output/compressors/rubocop'
 require_relative 'lean_output/compressors/brakeman'
 require_relative 'lean_output/compressors/git_diff'
 require_relative 'lean_output/compressors/cargo'
+require_relative 'lean_output/compressors/grep'
 require_relative 'lean_output/compressors/json_rows'
 require_relative 'lean_output/detector'
 require_relative 'lean_output/runner'
 
 module LeanOutput
-  VERSION = '0.7.0'
+  VERSION = '0.8.0'
 
   # Entry point for callers outside the Claude Code hook: agent orchestrators
   # injecting tool output into a prompt, CI scripts, log processors.
@@ -45,13 +46,26 @@ module LeanOutput
     text.to_s
   end
 
+  # Whether every compressor claiming this text keeps what it replaces. The
+  # hook uses it to pick the floor a rewrite has to clear before it is worth
+  # swapping in: dropping a backtrace has to earn its risk of costing the reader
+  # context, factoring out a repeated path owes nothing to that premium.
+  def self.lossless?(text, command: nil)
+    claimants = candidates(Text.plain(text.to_s), command)
+    claimants.any? && claimants.all?(&:lossless?)
+  end
+
   def self.rewrite(output, command)
     plain = Text.plain(output)
-    candidates = command ? Detector.for(command.to_s, plain) : Detector.by_output(plain)
-    rewrites = candidates.filter_map { |compressor| compressor.rewrite(plain) }
+    rewrites = candidates(plain, command).filter_map { |compressor| compressor.rewrite(plain) }
     return nil if rewrites.empty?
 
     Splice.apply(plain, rewrites)
   end
   private_class_method :rewrite
+
+  def self.candidates(plain, command)
+    command ? Detector.for(command.to_s, plain) : Detector.by_output(plain)
+  end
+  private_class_method :candidates
 end

@@ -14,6 +14,12 @@ module LeanOutput
     # Only replace the output when it saves at least 30% — below that the
     # rewrite isn't worth the risk of dropping context.
     MAX_RATIO = 0.7
+    # That 30% is two charges in one: the footer has to pay for itself, and the
+    # saving has to be worth the chance of having thrown away the line the
+    # reader needed. A lossless rewrite owes only the first. Measured over the
+    # corpus, charging grep the full premium threw away 33 kB of savings across
+    # 36 results that had discarded nothing to be suspicious of.
+    LOSSLESS_RATIO = 0.85
 
     def self.call(payload)
       return nil if ENV['LEAN_OUTPUT_DISABLE'] == '1'
@@ -25,7 +31,7 @@ module LeanOutput
 
       compressed = rewrite(tool, payload, output)
       return nil if compressed.nil? || compressed.equal?(output)
-      return nil unless compressed.bytesize < output.bytesize * MAX_RATIO
+      return nil unless compressed.bytesize < output.bytesize * ceiling(tool, payload, output)
 
       exit_line = output[/\AExit code \d+/]
       compressed = "#{exit_line}\n#{compressed}" if exit_line
@@ -54,6 +60,11 @@ module LeanOutput
 
         LeanOutput.compress(output)
       end
+    end
+
+    def self.ceiling(tool, payload, output)
+      command = payload.dig('tool_input', 'command') if tool == 'Bash'
+      LeanOutput.lossless?(output, command: command) ? LOSSLESS_RATIO : MAX_RATIO
     end
 
     def self.extract_output(response)

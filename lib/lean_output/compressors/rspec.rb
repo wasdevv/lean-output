@@ -1,11 +1,41 @@
+# frozen_string_literal: true
+
 module LeanOutput
   module Compressors
     class Rspec
-      COMMAND = %r{(^|[\s/])rspec(\s|$)}
+      extend Spannable
+
+      COMMAND = Shell.word('rspec')
       SUMMARY = /^\d+ examples?, \d+ failures?.*$/
       GEM_FRAME = %r{/gems/|/rubies/|/ruby/\d}
       SUPPORT_FRAME = %r{\./spec/support/}
       MAX_MESSAGE_LINES = 6
+
+      # Lines no other tool in a check suite writes. Failure bodies need no
+      # entry of their own: they sit between "Failures:" and "Finished in".
+      CORE = Regexp.union(
+        /^Failures:$/,
+        /^Pending:$/,
+        /^Finished in /,
+        SUMMARY,
+        /^Failed examples:$/,
+        /^rspec \S+ # /,
+        /^Randomized with seed \d+$/,
+        /^Top \d+ slowest/,
+        /^Coverage report generated/,
+        /^(Line|Branch) Coverage: /,
+        /^Stopped processing SimpleCov/
+      )
+
+      # The progress line names no tool, and it runs *before* the first line
+      # that does — so it is only reachable by growing backwards. Its alphabet
+      # overlaps RuboCop's, but RuboCop opens with "Inspecting N files", which
+      # anchors its span ahead of its own dots; neither can reach the other's.
+      PROGRESS = /^[.FE*]{3,}$/
+
+      def self.back_claim
+        PROGRESS
+      end
 
       def self.command_match?(command)
         command.match?(COMMAND)
@@ -19,10 +49,9 @@ module LeanOutput
         command_match?(command) && output_match?(output)
       end
 
-      def self.compress(output)
-        plain = Text.plain(output)
+      def self.summary(plain)
         summary = plain[SUMMARY] or return nil
-        finished = plain[/^Finished in .+$/]&.sub(/ \(files took.*\)/, "")
+        finished = plain[/^Finished in .+$/]&.sub(/ \(files took.*\)/, '')
         reruns = plain.scan(/^rspec (\S+) # .*$/).flatten
 
         out = +"RSpec: #{summary}"
@@ -50,7 +79,7 @@ module LeanOutput
 
       def self.parse_entry(entry)
         lines = entry.lines.map(&:chomp)
-        description = lines.shift.to_s.sub(/^\s*\d+\) /, "").strip
+        description = lines.shift.to_s.sub(/^\s*\d+\) /, '').strip
         error = nil
         message = []
         frame = nil
@@ -60,20 +89,20 @@ module LeanOutput
           stripped = line.strip
           next if stripped.empty?
 
-          if stripped.start_with?("# ")
-            path = stripped.delete_prefix("# ").sub(/:in .*/, "")
+          if stripped.start_with?('# ')
+            path = stripped.delete_prefix('# ').sub(/:in .*/, '')
             frame ||= path unless path.match?(GEM_FRAME) || path.match?(SUPPORT_FRAME)
             next
           end
 
-          if stripped.start_with?("Failure/Error:")
-            error = stripped.delete_prefix("Failure/Error:").strip
+          if stripped.start_with?('Failure/Error:')
+            error = stripped.delete_prefix('Failure/Error:').strip
             next
           end
 
-          in_diff ||= stripped == "Diff:"
+          in_diff ||= stripped == 'Diff:'
           next if in_diff
-          next if stripped == "(compared using ==)"
+          next if stripped == '(compared using ==)'
 
           message << stripped if message.size < MAX_MESSAGE_LINES
         end

@@ -1,6 +1,11 @@
 # frozen_string_literal: true
 
 module LeanOutput
+  # Picks the compressors that may claim a buffer. It no longer decides *which
+  # one* wrote the text: each returns the span it recognises, and two spans that
+  # overlap is what ambiguity now means. So a chain needs no command parsing —
+  # `rspec && rubocop`, `bin/ci rspec rubocop` and a buffer whose command is
+  # gone all resolve the same way, by reading the output.
   class Detector
     COMPRESSORS = [Compressors::Rspec, Compressors::Rubocop, Compressors::Brakeman, Compressors::GitDiff, Compressors::Cargo].freeze
     # Cargo is absent on purpose: telling a rustc diagnostic from a successful
@@ -11,23 +16,16 @@ module LeanOutput
     JSON_FORMAT = /(-f|--format)[= ]?j/
 
     def self.for(command, output)
-      return nil if command.match?(JSON_FORMAT)
+      return [] if command.match?(JSON_FORMAT)
 
-      matches = COMPRESSORS.select { |compressor| compressor.applicable?(command, output) }
-      return matches.first if matches.size == 1
-      return nil if matches.empty?
-
-      # More than one tool claims the buffer. When the command ran them in
-      # separate segments that is not ambiguity, it is a chain — see Composite.
-      Composite.build(command, matches)
+      COMPRESSORS.select { |compressor| compressor.applicable?(command, output) }
     end
 
     # For callers holding text whose command is gone — a judge briefing, a CI
-    # log, a saved buffer. Same unambiguity rule as `for`: two candidates means
-    # passthrough.
+    # log, a saved buffer. Without a command there is nothing to gate on but the
+    # output itself, so the list is narrower.
     def self.by_output(output)
-      matches = OUTPUT_DETECTABLE.select { |compressor| compressor.output_match?(output) }
-      matches.size == 1 ? matches.first : nil
+      OUTPUT_DETECTABLE.select { |compressor| compressor.output_match?(output) }
     end
   end
 end

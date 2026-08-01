@@ -3,9 +3,39 @@
 module LeanOutput
   module Compressors
     class GitDiff
-      COMMAND = %r{(^|[\s/])git(\s+-[^\s]+(\s+\S+)?)*\s+(diff|show)(\s|$)}
+      extend Spannable
+
+      COMMAND = Shell.word('git(?:\s+-\S+(?:\s+\S+)?)*\s+(?:diff|show)')
       HEADER = /^diff --git /
       SPLIT = /^(?=diff --git )/
+
+      # Structural lines only. Hunk bodies are reached by growth instead: a
+      # context line is just an indented line of source, and claiming that
+      # shape outright would let the span reach backwards into whatever ran
+      # before the diff.
+      CORE = Regexp.union(
+        HEADER,
+        /^index [0-9a-f]/,
+        %r{^--- (a/|/dev/null)},
+        %r{^\+\+\+ (b/|/dev/null)},
+        /^@@ /,
+        /^(old|new|deleted) (file )?mode /,
+        /^similarity index /,
+        /^rename (from|to) /,
+        /^Binary files /,
+        /^GIT binary patch$/
+      )
+
+      # The tail of the last hunk carries no marker, so contiguity is the only
+      # signal left. This is the weakest claim in the gem: `git diff && cat
+      # indented_file` would have the file's first lines absorbed. A diff is
+      # nearly always the last thing on a command line, which is what makes the
+      # trade acceptable.
+      BODY = /^([-+ \\]|$)/
+
+      def self.forward_claim
+        BODY
+      end
 
       # Files a reviewer never reads line by line: they are regenerated from a
       # source that is itself in the diff.
@@ -30,8 +60,8 @@ module LeanOutput
         command_match?(command) && output_match?(output)
       end
 
-      def self.compress(output)
-        parts = Text.plain(output).split(SPLIT)
+      def self.summary(plain)
+        parts = plain.split(SPLIT)
         # split drops nothing when the string opens with the pattern, so the
         # first part is a real preamble only when it is not itself a diff block.
         preamble = parts.first.to_s.match?(HEADER) ? '' : parts.shift.to_s

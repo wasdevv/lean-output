@@ -1,7 +1,7 @@
 RSpec.describe LeanOutput::Compressors::Rspec do
   describe "a suite with failures" do
     let(:original) { fixture("rspec_failures.txt") }
-    subject(:compressed) { described_class.compress(original) }
+    subject(:compressed) { compress_with(described_class, original) }
 
     it "keeps the summary counts and timing" do
       expect(compressed).to include("106 examples, 3 failures")
@@ -59,7 +59,7 @@ RSpec.describe LeanOutput::Compressors::Rspec do
 
   describe "a passing suite" do
     let(:original) { fixture("rspec_passing.txt") }
-    subject(:compressed) { described_class.compress(original) }
+    subject(:compressed) { compress_with(described_class, original) }
 
     it "collapses to the summary" do
       expect(compressed).to include("102 examples, 0 failures")
@@ -71,7 +71,7 @@ RSpec.describe LeanOutput::Compressors::Rspec do
 
   describe "ANSI-colored output" do
     it "parses and emits plain text" do
-      compressed = described_class.compress(fixture("rspec_failures_ansi.txt"))
+      compressed = compress_with(described_class, fixture("rspec_failures_ansi.txt"))
       expect(compressed).to include("106 examples, 3 failures")
       expect(compressed).not_to include("\e[")
     end
@@ -79,7 +79,7 @@ RSpec.describe LeanOutput::Compressors::Rspec do
 
   describe "unrecognizable output" do
     it "returns nil when there is no summary line (truncated output)" do
-      expect(described_class.compress("....\n\nFailures:\n\n  1) something")).to be_nil
+      expect(compress_with(described_class, "....\n\nFailures:\n\n  1) something")).to be_nil
     end
   end
 end

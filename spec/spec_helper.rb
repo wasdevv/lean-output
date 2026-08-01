@@ -1,4 +1,6 @@
-require_relative "../lib/lean_output"
+# frozen_string_literal: true
+
+require_relative '../lib/lean_output'
 
 RSpec.configure do |config|
   config.expect_with :rspec do |expectations|
@@ -16,4 +18,14 @@ end
 
 def fixture(name)
   File.read(File.expand_path("fixtures/#{name}", __dir__))
+end
+
+# One compressor over a whole buffer, through the same path the library uses:
+# find the span, summarise it, splice it back. Returns nil when the compressor
+# claims nothing, which is what passthrough looks like from here.
+def compress_with(compressor, output)
+  plain = LeanOutput::Text.plain(output)
+  rewrite = compressor.rewrite(plain) or return nil
+
+  LeanOutput::Splice.apply(plain, [rewrite])
 end

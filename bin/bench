@@ -33,7 +33,23 @@ SCENARIOS = [
   { name: "chain — rspec+rubocop+brakeman", command: "bundle exec rspec && bundle exec rubocop && bin/brakeman -q",
     files: %w[rspec_failures.txt rubocop_offenses.txt brakeman_warnings.txt], target: 0.70, expect_locations: true },
   { name: "chain — cargo+rspec",       command: "cargo build && bundle exec rspec",
-    files: %w[cargo_errors.txt rspec_failures.txt], target: 0.40, expect_locations: true }
+    files: %w[cargo_errors.txt rspec_failures.txt], target: 0.40, expect_locations: true },
+  # Nothing in the command says where one tool stopped and the next began. The
+  # spans do, so these read the same as an explicit `&&` chain.
+  { name: "chain — one segment, two tools", command: "bin/ci rspec rubocop",
+    files: %w[rspec_failures.txt rubocop_offenses.txt], target: 0.70, expect_locations: true },
+  { name: "chain — hidden by quoting", command: 'bash -c "rspec; rubocop"',
+    files: %w[rspec_failures.txt rubocop_offenses.txt], target: 0.70, expect_locations: true },
+  # The other half of the promise: a tool with nothing to rewrite must cost the
+  # buffer nothing. The diff has no generated files to collapse, so it comes
+  # back byte for byte while the rspec run beside it is still summarised.
+  { name: "chain — rspec + plain diff", command: "bundle exec rspec && git diff",
+    files: %w[rspec_failures.txt git_show_plain.txt], preserve: %w[git_show_plain.txt],
+    expect_locations: true },
+  { name: "rspec after a migration",   command: "bin/rails db:migrate && bundle exec rspec",
+    preamble: "== 20260101 CreateThings: migrating ==\n-- create_table(:things)\n   -> 0.0031s\n" \
+              "== 20260101 CreateThings: migrated (0.0032s) ==\n\n",
+    files: %w[rspec_failures.txt], target: 0.70, expect_locations: true }
 ].freeze
 
 # Output that must never be rewritten: either the compressor cannot rebuild it,
@@ -45,15 +61,6 @@ NEGATIVE = [
     why: "machine-readable output is consumed verbatim" },
   { name: "rspec — JSON format",          command: "bundle exec rspec -f json", file: "rspec_failures.txt",
     why: "machine-readable output is consumed verbatim" },
-  { name: "one segment, two tools",       command: "bin/ci rspec rubocop",
-    files: %w[rspec_failures.txt rubocop_offenses.txt],
-    why: "a segment claimed by two tools gives no way to tell which one wrote what" },
-  { name: "chain hidden by quoting",      command: 'bash -c "rspec; rubocop"',
-    files: %w[rspec_failures.txt rubocop_offenses.txt],
-    why: "the segment split misread the command, so where each tool ran is a guess" },
-  { name: "rspec chained with a plain diff", command: "bundle exec rspec && git diff",
-    files: %w[rspec_failures.txt git_show_plain.txt],
-    why: "the diff has nothing to collapse, so the chain would drop it whole" },
   { name: "short output",                 command: "cargo build", file: nil,
     why: "under both the line count and the byte floor" },
   { name: "mcp query — nested values",    tool: "mcp__insforge__query", file: "mcp_query_nested.json",
@@ -122,13 +129,24 @@ end
 # A chain scenario stitches one buffer out of several fixtures, the way a single
 # Bash call concatenates the output of every tool it ran.
 def read_fixture(scenario)
-  if scenario[:files]
-    scenario[:files].map { |name| File.read(File.join(FIXTURES, name)) }.join("\n")
-  elsif scenario[:file]
-    File.read(File.join(FIXTURES, scenario[:file]))
-  else
-    "error: boom\n --> src/a.rs:1:1\n"
-  end
+  body =
+    if scenario[:files]
+      scenario[:files].map { |name| File.read(File.join(FIXTURES, name)) }.join("\n")
+    elsif scenario[:file]
+      File.read(File.join(FIXTURES, scenario[:file]))
+    else
+      "error: boom\n --> src/a.rs:1:1\n"
+    end
+
+  "#{scenario[:preamble]}#{body}"
+end
+
+# Text that no compressor claims has to come back byte for byte. This is the
+# whole point of rewriting by span: before it, a buffer holding one tool the gem
+# knew and one it did not came back as a summary of the first, with the second
+# gone and nothing saying so.
+def unclaimed(scenario)
+  [scenario[:preamble], *Array(scenario[:preserve]).map { |name| File.read(File.join(FIXTURES, name)) }].compact
 end
 
 def lost(original, compressed)
@@ -167,6 +185,12 @@ SCENARIOS.each do |scenario|
   # invariant vacuously — the extractor, not the compressor, would be broken.
   if scenario[:expect_locations] && extracted.empty?
     warn "NO LOCATIONS EXTRACTED from #{label}: the invariant is vacuous here"
+    failed = true
+  end
+
+  dropped = unclaimed(scenario).reject { |text| compressed.include?(text) }
+  unless dropped.empty?
+    warn "LOST UNCLAIMED OUTPUT in #{label}: #{dropped.size} block(s) no compressor owned"
     failed = true
   end
 

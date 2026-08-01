@@ -48,17 +48,28 @@ Measured on real outputs captured from a Rails 8 app (`bin/bench`):
 | cargo — 7 warnings | 1698 → 1024 | 425 → 256 | **-40%** |
 | cargo — warnings (ANSI) | 2575 → 1024 | 644 → 256 | **-60%** |
 | cargo — clean build | 120 | 30 | passthrough² |
+| mcp query — 40 rows | 8450 → 2500 | 2113 → 625 | **-70%** |
+| mcp query — enveloped | 9205 → 2500 | 2301 → 625 | **-73%** |
+| chain — rspec+rubocop+brakeman | 9775 → 2106 | 2444 → 523 | **-78%** |
+| chain — cargo+rspec | 6124 → 1713 | 1531 → 427 | **-72%** |
+| chain — one segment, two tools | 6733 → 1510 | 1683 → 377 | **-78%** |
+| chain — hidden by quoting | 6733 → 1510 | 1683 → 377 | **-78%** |
+| chain — rspec + plain diff | 9497 → 5802 | 2368 → 1443 | **-39%** |
+| rspec after a migration | 4737 → 1043 | 1184 → 260 | **-78%** |
 
 ¹ estimate (chars / 4); run `ANTHROPIC_API_KEY=... bin/bench` for exact counts via the `count_tokens` API.
 ² Untouched: small outputs are never rewritten.
 
 Cargo compresses less than the Ruby tools, and that is the correct outcome: rustc diagnostics are mostly signal already. What goes away is the ASCII art — the echoed source line, the caret runs, the suggestion diffs — while every `file:line:col` and every `note:`/`help:` stays. On colored output the win doubles, because escape sequences are a third of the bytes.
 
-The benchmark enforces three invariants, and fails the build on any of them:
+The last six rows are one shell line running several tools into one buffer — see [Chains](#chains).
+
+The benchmark enforces four invariants, and fails the build on any of them:
 
 1. **Zero loss** — every failure/offense `file:line`, every rustc `--> file:line:col`, and every changed file path in the original must appear in the compressed output.
-2. **No vacuous passes** — a fixture that is supposed to contain failures must actually yield locations to the extractor. Without this, a broken extractor would make invariant 1 pass trivially.
-3. **Negative corpus** — five inputs that must come back *untouched*: libtest results, `--message-format=json`, `-f json`, genuinely ambiguous chained commands, and output below the line threshold.
+2. **Nothing unclaimed disappears** — text no compressor recognised must come back byte for byte, so a migration that ran before the suite, or a diff with nothing to collapse, survives intact.
+3. **No vacuous passes** — a fixture that is supposed to contain failures must actually yield locations to the extractor. Without this, a broken extractor would make invariant 1 pass trivially.
+4. **Negative corpus** — six inputs that must come back *untouched*: libtest results, `--message-format=json`, `-f json`, nested and multiline JSON values, and output below the line threshold.
 
 Diffs are where the numbers get absurd, because a single vendored dependency dwarfs everything a reviewer actually reads. The full commit the fixture above was sliced from (a CodeMirror 6 vendoring: 29 files, 233 hand-written insertions) goes from **651,833 B to 13,247 B — -97%**, roughly **163k tokens down to 3.3k**. Uncompressed it does not fit in a review at all.
 
@@ -81,6 +92,16 @@ Hooks on `PostToolUse` **and** `PostToolUseFailure` intercept every Bash tool re
 - **git diff / git show** — passes every hand-written hunk through **byte for byte**, and collapses the body of generated files to one line (`[lean-output] generated file — +12/-3 lines, body collapsed`), keeping their `diff --git` header so nothing disappears silently. Collapsed: `vendor/`, `node_modules/`, `dist/`, `coverage/`, `app/assets/builds/`, lockfiles (`Gemfile.lock`, `Cargo.lock`, `package-lock.json`, `yarn.lock`, `go.sum`, …), `db/structure.sql`, `*.min.js|css` and source maps. **`db/schema.rb` is deliberately not collapsed** — it is how a Rails reviewer sees what a migration actually did.
 - **cargo** (`build`, `check`, `clippy`, `test`, `run`) — keeps the diagnostic count, and for each one the `error[CODE]`/`warning` header, its `--> file:line:col`, the caret labels (the text that explains *why*, e.g. `expected i32, found &str`) and every `note:`/`help:`. Drops the echoed source lines, the caret art itself, suggestion diffs and `Compiling`/`Finished` progress. Refuses to touch output that carries **libtest results** (`running N tests`, `test result:`) or a successful `cargo run`, because panic sites and program stdout are not rustc art and cannot be rebuilt.
 
+## Chains
+
+`bundle exec rspec && bundle exec rubocop && bin/brakeman -q` is one tool call and one buffer. So is `bin/rails db:migrate && bundle exec rspec`, where half the output belongs to no compressor at all.
+
+Nothing here parses the command to work out where one tool stopped and the next began — quoting, wrapper scripts and `bash -c` make that a guess, and a wrong guess is silent data loss. Instead each compressor declares the lines only it writes, and from those claims a **span**: first recognised line to last, everything between included. It summarises that slice and nothing else; the rest of the buffer is spliced back untouched. Two spans that overlap is the one case with no honest answer — the tools disagree about who wrote those bytes — and it ends in passthrough.
+
+The consequence is that a tool with nothing to say costs the buffer nothing. A `git diff` with no generated files to collapse used to force the whole chain to pass through; now it simply comes back verbatim beside a summarised rspec run.
+
+Replayed over 301 real Bash results from local Claude Code transcripts: **-38% overall, and not one line outside a span went missing.** The whole-buffer rewrite this replaced scored -88% on the same corpus, but 138 of those results had silently deleted output the model never learned about.
+
 ## Use it as a library
 
 The hook is one caller. Anything that injects tool output into a prompt has the same problem and usually solves it with `byteslice`, which amputates whatever sits at the cut — typically the failure message the reader needed. `LeanOutput.compress` is the same engine behind a plain API:
@@ -99,7 +120,7 @@ LeanOutput.compress(stdout, command: "bundle exec rspec", budget: 8_000)
 ```
 
 - **Always a String.** Passthrough returns the input itself; an unexpected error degrades to the input rather than raising. It drops in wherever you used to truncate.
-- **`command` is optional.** Without it the text alone has to identify the tool, under the same unambiguity rule the hook uses: two candidates means passthrough. Cargo never self-identifies — telling a rustc diagnostic from a successful `cargo run` followed by program stdout needs the subcommand.
+- **`command` is optional.** Without it the text alone has to identify the tools, and each still only rewrites the span it recognises. Cargo never self-identifies — telling a rustc diagnostic from a successful `cargo run` followed by program stdout needs the subcommand.
 - **`budget` is a byte ceiling spent on whole entries.** Compressed output is a summary plus blank-line-separated entries (one failure, one file's offenses, one diagnostic), so it keeps the summary and as many whole entries as fit, then says `[lean-output] 12 of 19 entries omitted (budget 8.0kB)`. For text no compressor understands it keeps both ends — the invocation and early errors at the head, the summary and exit status at the tail — and drops only the middle.
 - **No line-count floor.** The hook's 40-line minimum and 30% minimum saving are policy in `Runner`; a caller asking for compression has already decided the text is too long.
 
@@ -123,8 +144,9 @@ The tail keeps the profiling table and the coverage report and drops the entire 
 
 Compression is only worth it if it can never hurt you:
 
-- **Passthrough on any doubt** — unrecognized format, output under 40 lines, missing summary (truncated output), `--format json` already in use, ambiguous chained commands: the original output stays untouched.
+- **Passthrough on any doubt** — unrecognized format, output under 40 lines, missing summary (truncated output), `--format json` already in use, two compressors claiming the same bytes: the original output stays untouched.
 - **Failures are sacred** — every failing example and its `file:line` survives compression, always.
+- **Nothing is dropped in silence** — a compressor rewrites only the span it recognises; whatever else shared the buffer comes back byte for byte.
 - **Errors can't break your session** — any exception inside the hook exits 0 silently.
 - **Kill-switch** — `LEAN_OUTPUT_DISABLE=1` turns it off without uninstalling.
 - Only rewrites when it saves at least 30%; a footer (`[lean-output] 4.5kB → 0.9kB (-80%)`) always tells the model — and you — that compression happened.

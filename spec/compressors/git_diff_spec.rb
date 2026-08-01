@@ -3,7 +3,7 @@
 RSpec.describe LeanOutput::Compressors::GitDiff do
   describe 'a commit mixing hand-written and vendored files' do
     let(:original) { fixture('git_show_vendored.txt') }
-    subject(:compressed) { described_class.compress(original) }
+    subject(:compressed) { compress_with(described_class, original) }
 
     it 'keeps every hand-written hunk byte for byte' do
       %w[
@@ -39,7 +39,7 @@ RSpec.describe LeanOutput::Compressors::GitDiff do
 
   describe 'a diff with nothing generated in it' do
     it 'returns nil rather than rewriting a diff it cannot shrink' do
-      expect(described_class.compress(fixture('git_show_plain.txt'))).to be_nil
+      expect(compress_with(described_class, fixture('git_show_plain.txt'))).to be_nil
     end
   end
 
@@ -64,7 +64,7 @@ RSpec.describe LeanOutput::Compressors::GitDiff do
 
   describe 'unrecognizable output' do
     it 'returns nil' do
-      expect(described_class.compress('some random output')).to be_nil
+      expect(compress_with(described_class, 'some random output')).to be_nil
     end
   end
 end

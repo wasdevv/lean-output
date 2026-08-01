@@ -1,8 +1,26 @@
+# frozen_string_literal: true
+
 module LeanOutput
   module Compressors
     class Rubocop
-      COMMAND = %r{(^|[\s/])rubocop(\s|$)}
+      extend Spannable
+
+      COMMAND = Shell.word('rubocop')
       SUMMARY = /^\d+ files? inspected.*$/
+      OFFENSE = /^(\S+):(\d+:\d+): \w+: (?:\[Correctable\] )?(.*)$/
+
+      CORE = Regexp.union(/^Inspecting \d+ files?$/, /^Offenses:$/, OFFENSE, SUMMARY)
+
+      # "Inspecting N files" usually anchors the span ahead of the dots, but a
+      # `rubocop | tail -3` cuts it off and leaves them stranded. The alphabet
+      # is rspec's too; that is safe because both grow backwards only, and a
+      # progress line always sits *below* the output of whatever ran before it,
+      # never below its own tool's summary.
+      PROGRESS = /^[.CWEF]{3,}$/
+
+      def self.back_claim
+        PROGRESS
+      end
 
       def self.command_match?(command)
         command.match?(COMMAND)
@@ -16,10 +34,7 @@ module LeanOutput
         command_match?(command) && output_match?(output)
       end
 
-      OFFENSE = /^(\S+):(\d+:\d+): \w+: (?:\[Correctable\] )?(.*)$/
-
-      def self.compress(output)
-        plain = Text.plain(output)
+      def self.summary(plain)
         summary = plain[SUMMARY] or return nil
 
         out = +"RuboCop: #{summary}"
@@ -27,7 +42,7 @@ module LeanOutput
           out << "\n\n#{file}"
           offenses.group_by { |(_, _, message)| message }.each do |message, group|
             locations = group.map { |(_, location, _)| location }
-            out << "\n  #{locations.join(", ")} #{message}"
+            out << "\n  #{locations.join(', ')} #{message}"
           end
         end
 

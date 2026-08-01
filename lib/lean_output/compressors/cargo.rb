@@ -3,8 +3,10 @@
 module LeanOutput
   module Compressors
     class Cargo
-      COMMAND      = /(^|[\s&;|])cargo\s+(build|check|clippy|test|run)(\s|$)/
-      RUN_COMMAND  = /(^|[\s&;|])cargo\s+run(\s|$)/
+      extend Spannable
+
+      COMMAND      = Shell.word('cargo\s+(?:build|check|clippy|test|run)')
+      RUN_COMMAND  = Shell.word('cargo\s+run')
       JSON_FORMAT  = /--message-format[= ]json/
       # libtest output. Panic sites are reported as "panicked at file:line:col",
       # never as rustc art, so this compressor cannot rebuild them.
@@ -42,6 +44,16 @@ module LeanOutput
       FOOTER_NOISE = /^(Some errors have detailed explanations:|For more information about an error)/
       # Progress lines
       PROGRESS     = /^\s*(Compiling|Downloading|Updating|Finished|Running|Blocking)\s/
+      # Same verbs, but only where cargo puts them. Cargo right-aligns its
+      # status column, so the verb always carries leading space; rspec's
+      # "Finished in 0.5 seconds" starts at column zero. Without that
+      # distinction a `cargo build && rspec` buffer would have one span
+      # swallow the other and the whole chain would fall back to passthrough.
+      STATUS       = /^\s+(Compiling|Downloading|Updating|Finished|Running|Blocking)\s/
+
+      CORE = Regexp.union(DIAG_HEADER, ANY_LOCATION, ART_PIPE, SOURCE_ECHO, SUGGESTION,
+                          NOTE_HELP, HELP_LINE, STATUS, WARNING_SUMMARY, COMPILE_ERROR,
+                          FOOTER_NOISE)
 
       # Only rustc diagnostic output is safe to rewrite. Anything that also
       # carries libtest results or program stdout gets left alone: this
@@ -65,8 +77,7 @@ module LeanOutput
         true
       end
 
-      def self.compress(output)
-        plain = Text.plain(output)
+      def self.summary(plain)
         return nil unless plain.match?(DIAG_HEADER)
 
         # Count only real diagnostics — exclude the summary/footer lines

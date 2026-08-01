@@ -2,18 +2,21 @@
 
 require_relative 'lean_output/text'
 require_relative 'lean_output/budget'
+require_relative 'lean_output/shell'
+require_relative 'lean_output/region'
+require_relative 'lean_output/splice'
+require_relative 'lean_output/spannable'
 require_relative 'lean_output/compressors/rspec'
 require_relative 'lean_output/compressors/rubocop'
 require_relative 'lean_output/compressors/brakeman'
 require_relative 'lean_output/compressors/git_diff'
 require_relative 'lean_output/compressors/cargo'
 require_relative 'lean_output/compressors/json_rows'
-require_relative 'lean_output/composite'
 require_relative 'lean_output/detector'
 require_relative 'lean_output/runner'
 
 module LeanOutput
-  VERSION = '0.6.0'
+  VERSION = '0.7.0'
 
   # Entry point for callers outside the Claude Code hook: agent orchestrators
   # injecting tool output into a prompt, CI scripts, log processors.
@@ -43,8 +46,12 @@ module LeanOutput
   end
 
   def self.rewrite(output, command)
-    compressor = command ? Detector.for(command.to_s, output) : Detector.by_output(output)
-    compressor&.compress(output)
+    plain = Text.plain(output)
+    candidates = command ? Detector.for(command.to_s, plain) : Detector.by_output(plain)
+    rewrites = candidates.filter_map { |compressor| compressor.rewrite(plain) }
+    return nil if rewrites.empty?
+
+    Splice.apply(plain, rewrites)
   end
   private_class_method :rewrite
 end

@@ -63,7 +63,7 @@ RSpec.describe LeanOutput::Compressors::Cargo do
 
   describe 'errors fixture' do
     let(:original) { fixture('cargo_errors.txt') }
-    subject(:compressed) { described_class.compress(original) }
+    subject(:compressed) { compress_with(described_class, original) }
 
     it 'starts with a summary line listing error count and failure reason' do
       expect(compressed.lines.first).to match(/Cargo: 4 errors/)
@@ -137,7 +137,7 @@ RSpec.describe LeanOutput::Compressors::Cargo do
 
   describe 'warnings fixture' do
     let(:original) { fixture('cargo_warnings.txt') }
-    subject(:compressed) { described_class.compress(original) }
+    subject(:compressed) { compress_with(described_class, original) }
 
     it 'starts with a summary line listing warning count' do
       expect(compressed.lines.first).to match(/Cargo: 7 warnings/)
@@ -188,7 +188,7 @@ RSpec.describe LeanOutput::Compressors::Cargo do
 
   describe 'ANSI-colored errors output' do
     let(:original) { fixture('cargo_errors_ansi.txt') }
-    subject(:compressed) { described_class.compress(original) }
+    subject(:compressed) { compress_with(described_class, original) }
 
     it 'produces plain text without ANSI escapes' do
       expect(compressed).not_to include("\e[")
@@ -221,7 +221,7 @@ RSpec.describe LeanOutput::Compressors::Cargo do
 
   describe 'ANSI-colored warnings output' do
     let(:original) { fixture('cargo_warnings_ansi.txt') }
-    subject(:compressed) { described_class.compress(original) }
+    subject(:compressed) { compress_with(described_class, original) }
 
     it 'produces plain text without ANSI escapes' do
       expect(compressed).not_to include("\e[")
@@ -252,7 +252,7 @@ RSpec.describe LeanOutput::Compressors::Cargo do
     let(:original) { fixture('cargo_clean.txt') }
 
     it 'returns nil (no diagnostic lines means no gain)' do
-      expect(described_class.compress(original)).to be_nil
+      expect(compress_with(described_class, original)).to be_nil
     end
 
     it 'is not applicable (no diagnostics in output)' do
@@ -262,7 +262,7 @@ RSpec.describe LeanOutput::Compressors::Cargo do
 
   describe 'unrecognizable output' do
     it 'returns nil for output with no cargo diagnostics' do
-      expect(described_class.compress('some random output without cargo diagnostics')).to be_nil
+      expect(compress_with(described_class, 'some random output without cargo diagnostics')).to be_nil
     end
   end
 end

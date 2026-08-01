@@ -1,7 +1,7 @@
 RSpec.describe LeanOutput::Compressors::Rubocop do
   describe "a run with offenses" do
     let(:original) { fixture("rubocop_offenses.txt") }
-    subject(:compressed) { described_class.compress(original) }
+    subject(:compressed) { compress_with(described_class, original) }
 
     it "keeps the summary" do
       expect(compressed).to include("18 files inspected, 13 offenses detected, 13 offenses autocorrectable")
@@ -41,7 +41,7 @@ RSpec.describe LeanOutput::Compressors::Rubocop do
 
   describe "a clean run" do
     it "collapses to the summary" do
-      compressed = described_class.compress(fixture("rubocop_clean.txt"))
+      compressed = compress_with(described_class, fixture("rubocop_clean.txt"))
       expect(compressed).to include("no offenses detected")
       expect(compressed.lines.count).to be <= 2
     end
@@ -49,7 +49,7 @@ RSpec.describe LeanOutput::Compressors::Rubocop do
 
   describe "ANSI-colored output" do
     it "parses and emits plain text" do
-      compressed = described_class.compress(fixture("rubocop_offenses_ansi.txt"))
+      compressed = compress_with(described_class, fixture("rubocop_offenses_ansi.txt"))
       expect(compressed).to include("13 offenses detected")
       expect(compressed).not_to include("\e[")
     end
@@ -57,7 +57,7 @@ RSpec.describe LeanOutput::Compressors::Rubocop do
 
   describe "unrecognizable output" do
     it "returns nil without a summary line" do
-      expect(described_class.compress("some random output")).to be_nil
+      expect(compress_with(described_class, "some random output")).to be_nil
     end
   end
 end

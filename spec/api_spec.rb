@@ -32,10 +32,10 @@ RSpec.describe 'LeanOutput.compress' do
     expect(LeanOutput.compress(text)).to equal(text)
   end
 
-  it 'passes through when the text is ambiguous without a command' do
+  it 'compresses both tools of a buffer whose command is gone' do
     both = "#{rspec_output}\n#{rubocop_output}"
 
-    expect(LeanOutput.compress(both)).to equal(both)
+    expect(LeanOutput.compress(both)).to include('RSpec:', 'RuboCop:')
   end
 
   it 'never claims cargo output without a command' do
@@ -80,7 +80,7 @@ RSpec.describe 'LeanOutput.compress' do
   end
 
   it 'degrades to the input instead of raising when a compressor blows up' do
-    allow(LeanOutput::Compressors::Rspec).to receive(:compress).and_raise('boom')
+    allow(LeanOutput::Compressors::Rspec).to receive(:summary).and_raise('boom')
 
     expect(LeanOutput.compress(rspec_output, command: 'rspec')).to eq(rspec_output)
   end

@@ -1,7 +1,7 @@
 RSpec.describe LeanOutput::Compressors::Brakeman do
   describe "a scan with warnings" do
     let(:original) { fixture("brakeman_warnings.txt") }
-    subject(:compressed) { described_class.compress(original) }
+    subject(:compressed) { compress_with(described_class, original) }
 
     it "keeps the warning count" do
       expect(compressed).to include("5 security warnings")
@@ -36,7 +36,7 @@ RSpec.describe LeanOutput::Compressors::Brakeman do
 
   describe "a clean scan" do
     it "collapses to the summary" do
-      compressed = described_class.compress(fixture("brakeman_clean.txt"))
+      compressed = compress_with(described_class, fixture("brakeman_clean.txt"))
       expect(compressed).to include("0 security warnings")
       expect(compressed.lines.count).to be <= 2
     end
@@ -44,7 +44,7 @@ RSpec.describe LeanOutput::Compressors::Brakeman do
 
   describe "ANSI-colored output" do
     it "parses and emits plain text" do
-      compressed = described_class.compress(fixture("brakeman_warnings_ansi.txt"))
+      compressed = compress_with(described_class, fixture("brakeman_warnings_ansi.txt"))
       expect(compressed).to include("5 security warnings")
       expect(compressed).not_to include("\e[")
     end
@@ -52,7 +52,7 @@ RSpec.describe LeanOutput::Compressors::Brakeman do
 
   describe "unrecognizable output" do
     it "returns nil without a report" do
-      expect(described_class.compress("some random output")).to be_nil
+      expect(compress_with(described_class, "some random output")).to be_nil
     end
   end
 end

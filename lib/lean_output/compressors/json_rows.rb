@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "json"
+require 'json'
 
 module LeanOutput
   module Compressors
@@ -14,8 +14,16 @@ module LeanOutput
     # rewriting it breaks the caller; a tool result reaching this hook has no
     # consumer but the model, which reads a table as well as it reads JSON.
     class JsonRows
+      extend Spannable
+
       MIN_ROWS = 5
-      SEPARATOR = " | "
+      SEPARATOR = ' | '
+
+      # An MCP result is one document, never a shell line with several commands
+      # sharing a buffer, so the span is simply all of it.
+      def self.region(plain)
+        rows(plain) && (0...plain.length)
+      end
 
       def self.command_match?(_command)
         false
@@ -29,8 +37,8 @@ module LeanOutput
         command_match?(command) && output_match?(output)
       end
 
-      def self.compress(output)
-        rows = rows(output) or return nil
+      def self.summary(plain)
+        rows = rows(plain) or return nil
         columns = rows.first.keys
 
         lines = ["JSON rows: #{rows.size} rows, #{columns.size} columns", columns.join(SEPARATOR)]
@@ -64,7 +72,9 @@ module LeanOutput
         return false if columns.empty?
 
         value.all? do |row|
-          row.size == columns.size && columns.all? { |column| row.key?(column) } && row.each_value.all? { |cell| scalar?(cell) }
+          row.size == columns.size && columns.all? { |column| row.key?(column) } && row.each_value.all? do |cell|
+            scalar?(cell)
+          end
         end
       end
 
@@ -80,7 +90,7 @@ module LeanOutput
       end
 
       def self.cell(value)
-        value.nil? ? "null" : value.to_s
+        value.nil? ? 'null' : value.to_s
       end
 
       private_class_method :rows, :tabular?, :scalar?, :cell

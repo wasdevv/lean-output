@@ -20,6 +20,7 @@ module LeanOutput
 
     def self.call(payload)
       return nil unless payload.is_a?(Hash)
+      return Cap.call(payload) if payload['hook_event_name'] == 'PreToolUse'
 
       tool = payload['tool_name'].to_s
       response = payload['tool_response']

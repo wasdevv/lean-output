@@ -59,11 +59,12 @@ module LeanOutput
     end
 
     def self.blank
-      { 'v' => VERSION, 'seq' => 0, 'bytes' => 0, 'seen' => {}, 'gain' => gain_blank }
+      { 'v' => VERSION, 'seq' => 0, 'bytes' => 0, 'seen' => {}, 'watch' => [], 'gain' => gain_blank }
     end
 
     def self.gain_blank
-      { 'calls' => 0, 'before' => 0, 'after' => 0, 'hits' => 0, 'hit_bytes' => 0 }
+      { 'calls' => 0, 'before' => 0, 'after' => 0, 'hits' => 0, 'hit_bytes' => 0,
+        'rewrites' => 0, 'reruns' => 0, 'reruns_base' => 0 }
     end
 
     def initialize(id, data)
@@ -114,6 +115,35 @@ module LeanOutput
 
     def gain
       data['gain'] || self.class.gain_blank
+    end
+
+    # Whether a rewrite cost the model something it needed, measured the only
+    # way a hook can see: it asked for the same thing again, straight away.
+    #
+    # Both arms are counted, and that is the entire design. Re-running a command
+    # within three calls is background behaviour — over 8680 real results it
+    # happens after 15.0% of the results this plugin would rewrite and after
+    # 14.9% of the ones it leaves alone. A detector watching only the first
+    # number would have found 89 "misses" in a corpus where the plugin was
+    # provably inert and could not have caused one.
+    #
+    # So this records a rate against its own control and stops. Demoting a
+    # compressor on the strength of a signal with no measured lift would be
+    # acting confidently on noise, which is the failure this file exists to
+    # avoid, not commit. The threshold gets written when the two arms separate.
+    WATCH_CALLS = 3
+
+    def observe(label, rewritten:)
+      watch = data['watch'] ||= []
+      earlier = watch.find { |entry| entry[1] == label && seq - entry[0].to_i <= WATCH_CALLS }
+
+      if earlier
+        gain[earlier[2] ? 'reruns' : 'reruns_base'] = gain[earlier[2] ? 'reruns' : 'reruns_base'].to_i + 1
+      end
+      gain['rewrites'] = gain['rewrites'].to_i + 1 if rewritten
+
+      watch << [seq, label, rewritten]
+      data['watch'] = watch.last(WATCH_CALLS)
     end
 
     def save

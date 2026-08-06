@@ -21,8 +21,33 @@ module LeanOutput
       current = read(newest_for(cwd))
       lines = ["  this session   #{summarise(current)}"]
       lines << "  all sessions   #{summarise(total)}" if files.size > 1
+      lines << "  re-run rate    #{reruns(total)}" if rerun_sample?(total)
       lines.join("\n")
     end
+
+    # Printed as a pair or not at all. On its own, "8% of rewrites were followed
+    # by the same command again" reads like a harm figure; beside the same
+    # number for the results left untouched it reads like what it is. They sat
+    # at 15.0% and 14.9% over the corpus that motivated this, which is the
+    # measurement saying the first number means nothing yet.
+    def self.reruns(gain)
+      rewrites = gain['rewrites'].to_i
+      others = gain['calls'].to_i - rewrites
+      "#{percent_of(gain['reruns'], rewrites)} after a rewrite, " \
+        "#{percent_of(gain['reruns_base'], others)} after a passthrough " \
+        "(within #{Session::WATCH_CALLS} calls)"
+    end
+    private_class_method :reruns
+
+    def self.rerun_sample?(gain)
+      gain['rewrites'].to_i.positive? && (gain['calls'].to_i - gain['rewrites'].to_i).positive?
+    end
+    private_class_method :rerun_sample?
+
+    def self.percent_of(count, total)
+      total.zero? ? 'n/a' : "#{(100.0 * count.to_i / total).round(1)}%"
+    end
+    private_class_method :percent_of
 
     def self.summarise(gain)
       calls = gain['calls'].to_i

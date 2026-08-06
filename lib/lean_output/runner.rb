@@ -49,6 +49,7 @@ module LeanOutput
         session.remember(Ledger.digest(output), Ledger.label(tool, payload), output.bytesize)
       end
       session.credit(output.bytesize, (rewritten || output).bytesize, hit: hit)
+      session.observe(Ledger.label(tool, payload), rewritten: !rewritten.nil?)
       session.save
 
       rewritten ? respond(payload, rewritten, output) : nil

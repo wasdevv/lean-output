@@ -77,6 +77,8 @@ module LeanOutput
         true
       end
 
+      def self.discards = 'source echoes, rustc suggestions'
+
       def self.summary(plain)
         return nil unless plain.match?(DIAG_HEADER)
 

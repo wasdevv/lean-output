@@ -34,5 +34,16 @@ module LeanOutput
     def lossless?
       false
     end
+
+    # What class of thing this compressor throws away, in the words a reader
+    # would use to decide whether to go look. A summary that says only how much
+    # smaller it got asks the reader to trust it; one that names what is gone
+    # lets them notice when it is the thing they needed.
+    #
+    # nil means nothing is gone, which is the only honest answer for a
+    # compressor that is lossless.
+    def discards
+      nil
+    end
   end
 end

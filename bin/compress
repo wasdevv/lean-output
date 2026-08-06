@@ -16,7 +16,10 @@ begin
   input = $stdin.read
   debug("payload: #{input[0, 2000]}")
   result = LeanOutput::Runner.call(JSON.parse(input))
-  debug(result ? "compressed (#{result.dig("hookSpecificOutput", "updatedToolOutput").bytesize} bytes)" : "passthrough")
+  # JSON.generate, not .bytesize: updatedToolOutput now mirrors the tool's own
+  # shape, so it is a Hash as often as a String and a size call would raise —
+  # into the rescue below, where turning debug on would turn the plugin off.
+  debug(result ? "compressed: #{JSON.generate(result)[0, 400]}" : "passthrough")
   puts JSON.generate(result) if result
 rescue StandardError => e
   debug("error: #{e.class}: #{e.message}")

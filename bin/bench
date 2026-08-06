@@ -1,13 +1,39 @@
 #!/usr/bin/env ruby
-# Benchmark: runs every fixture through the real Runner, measures savings and
-# verifies no failure/offense location is ever lost. Exits 1 if the plugin
-# fails its own promises (>=80% on failing rspec suites, zero lost locations).
+# Benchmark: every fixture through the real Runner, in five sections.
+#
+#   1. rung 7   — the compressors, per scenario
+#   2. rungs 1+2 — the ledger, per simulated session
+#   3. modes    — the same corpus at every level
+#   4. window   — how far back a reference may usefully point
+#   5. footer   — what the receipt costs against what it reports
+#
+# Sections 1 and 2 enforce invariants that fail the build. Sections 3, 4 and 5
+# are measurements: they exist so a number in the README can be checked rather
+# than believed, and so a change that trades a point of saving for a lost
+# location shows up as both.
+#
+# Exits 1 if the plugin fails its own promises.
 
 require "json"
 require "net/http"
+require "tmpdir"
+require "fileutils"
 require_relative "../lib/lean_output"
 
 FIXTURES = File.expand_path("../spec/fixtures", __dir__)
+
+# The ledger remembers across calls, so without isolation the bench would
+# deduplicate against its own earlier scenarios — the negative corpus reuses
+# fixtures the positive corpus already sent, and every one of them would come
+# back as a reference. A fresh state directory plus one session id per scenario
+# keeps each measurement about the thing it is measuring.
+STATE = Dir.mktmpdir("lean-output-bench")
+ENV["LEAN_OUTPUT_STATE_DIR"] = STATE
+at_exit do
+  FileUtils.remove_entry(STATE)
+rescue StandardError
+  nil
+end
 
 SCENARIOS = [
   { name: "rspec — 3 failures",        command: "bundle exec rspec",   file: "rspec_failures.txt",       must_hit_target: true, expect_locations: true },
@@ -72,10 +98,66 @@ NEGATIVE = [
   { name: "mcp query — multiline values", tool: "mcp__insforge__query", file: "mcp_query_multiline.json",
     why: "a newline inside a cell would split one row across two lines" },
   { name: "grep — one hit per file",      command: 'grep -rn "def self.summary" lib/', file: "grep_scattered.txt",
-    why: "nothing repeats to factor out; a header per file would grow the buffer" }
+    why: "nothing repeats to factor out; a header per file would grow the buffer" },
+  # The ledger's own negative cases. A reference is a pointer into the
+  # transcript, and a wrong one is worse than the bytes it saved.
+  { name: "Read — never seen before",     tool: "Read", path: "app/models/user.rb", file: "rspec_failures.txt",
+    why: "the first occurrence has nothing to point at" },
+  { name: "Read — tiny file",             tool: "Read", path: "Procfile", inline: "web: bin/rails server\n", repeat: true,
+    why: "the reference would cost more than the file it withholds" },
+  { name: "Glob — a tool with no rung",   tool: "Glob", file: "rspec_failures.txt", repeat: true,
+    why: "not deduplicated and not compressible; nothing claims it" }
 ].freeze
 
-TARGET = 0.80
+# Was 0.80 while the receipt said only how much smaller the output got. Naming
+# what each rewrite discarded costs about a point on the smallest fixtures —
+# section 5 prices it exactly — and that point buys a reader the ability to
+# check the summary instead of trusting it. The number moved because the
+# product changed, not to make the build pass.
+TARGET = 0.78
+
+# A session is a list of steps against one ledger. `hits` is how many of them
+# must come back as a reference — asserted, not reported, because "the ledger
+# fired somewhere" is not a claim worth making.
+LEDGER_SESSIONS = [
+  { name: "re-read the same file twice",
+    steps: [%w[Read app.rb rspec_failures.txt], %w[Read app.rb rspec_failures.txt]],
+    hits: 1 },
+  { name: "re-read after working elsewhere",
+    steps: [%w[Read app.rb rspec_failures.txt], %w[Read other.rb rubocop_offenses.txt],
+            %w[Read third.rb brakeman_warnings.txt], %w[Read app.rb rspec_failures.txt]],
+    hits: 1 },
+  { name: "file changed by one byte in between",
+    steps: [%w[Read app.rb rspec_failures.txt], ["Read", "app.rb", "rspec_failures.txt", " "]],
+    hits: 0 },
+  { name: "alternating between two files",
+    steps: [%w[Read a.rb rspec_failures.txt], %w[Read b.rb rubocop_offenses.txt],
+            %w[Read a.rb rspec_failures.txt], %w[Read b.rb rubocop_offenses.txt]],
+    hits: 2 },
+  { name: "same bytes under a different path",
+    steps: [%w[Read lib/x.rb rspec_failures.txt], %w[Read vendor/x.rb rspec_failures.txt]],
+    hits: 1 },
+  { name: "the agent runs git status four times",
+    steps: [["Bash", "git status", "git_show_plain.txt"]] * 4,
+    hits: 3 },
+  { name: "an MCP result the agent asks for twice",
+    steps: [["mcp__insforge__query", "query", "mcp_query_rows.json"]] * 2,
+    hits: 1 },
+  { name: "a long session with four repeats",
+    steps: [%w[Read a.rb rspec_failures.txt], %w[Read b.rb rubocop_offenses.txt],
+            %w[Read c.rb brakeman_warnings.txt], %w[Read a.rb rspec_failures.txt],
+            %w[Read d.rb cargo_errors.txt], %w[Read b.rb rubocop_offenses.txt],
+            %w[Read e.rb grep_hits.txt], %w[Read c.rb brakeman_warnings.txt],
+            %w[Read f.rb git_show_vendored.txt], %w[Read d.rb cargo_errors.txt]],
+    hits: 4 },
+  { name: "beyond the recency window",
+    steps: [%w[Read a.rb rspec_failures.txt], %w[Read b.rb git_show_vendored.txt],
+            %w[Read a.rb rspec_failures.txt]],
+    window: 1_000, hits: 0 }
+].freeze
+
+WINDOWS = [5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000].freeze
+GAPS = [1, 2, 4, 8, 16].freeze
 
 def api_key
   ENV["ANTHROPIC_API_KEY"]
@@ -125,26 +207,37 @@ rescue JSON::ParserError
   []
 end
 
-# MCP results arrive as content blocks and carry no command; Bash results carry
-# the command and nothing else.
-def payload_for(scenario, original)
-  if scenario[:tool]
-    { "tool_name" => scenario[:tool], "tool_input" => {},
-      "tool_response" => [{ "type" => "text", "text" => original }] }
+# MCP results arrive as content blocks, a Read arrives as a structured file, and
+# a Bash result carries the command and nothing else.
+def payload_for(scenario, original, session)
+  base = { "session_id" => session, "cwd" => "/bench" }
+  tool = scenario[:tool]
+
+  case tool
+  when nil
+    base.merge("tool_name" => "Bash", "tool_input" => { "command" => scenario[:command] },
+               "tool_response" => original)
+  when "Read"
+    base.merge("tool_name" => "Read", "tool_input" => { "file_path" => scenario[:path].to_s },
+               "tool_response" => { "file" => { "content" => original } })
+  when /\Amcp__/
+    base.merge("tool_name" => tool, "tool_input" => {},
+               "tool_response" => [{ "type" => "text", "text" => original }])
   else
-    { "tool_name" => "Bash", "tool_input" => { "command" => scenario[:command] },
-      "tool_response" => original }
+    base.merge("tool_name" => tool, "tool_input" => {}, "tool_response" => original)
   end
 end
 
 # A chain scenario stitches one buffer out of several fixtures, the way a single
 # Bash call concatenates the output of every tool it ran.
 def read_fixture(scenario)
+  return scenario[:inline] if scenario[:inline]
+
   body =
     if scenario[:files]
-      scenario[:files].map { |name| File.read(File.join(FIXTURES, name)) }.join("\n")
+      scenario[:files].map { |name| fixture(name) }.join("\n")
     elsif scenario[:file]
-      File.read(File.join(FIXTURES, scenario[:file]))
+      fixture(scenario[:file])
     else
       "error: boom\n --> src/a.rs:1:1\n"
     end
@@ -152,12 +245,16 @@ def read_fixture(scenario)
   "#{scenario[:preamble]}#{body}"
 end
 
+def fixture(name)
+  File.read(File.join(FIXTURES, name))
+end
+
 # Text that no compressor claims has to come back byte for byte. This is the
 # whole point of rewriting by span: before it, a buffer holding one tool the gem
 # knew and one it did not came back as a summary of the first, with the second
 # gone and nothing saying so.
 def unclaimed(scenario)
-  [scenario[:preamble], *Array(scenario[:preserve]).map { |name| File.read(File.join(FIXTURES, name)) }].compact
+  [scenario[:preamble], *Array(scenario[:preserve]).map { |name| fixture(name) }].compact
 end
 
 def lost(original, compressed)
@@ -168,102 +265,308 @@ def lost(original, compressed)
   [extracted, missing]
 end
 
+def updated(result)
+  result&.dig("hookSpecificOutput", "updatedToolOutput")
+end
+
+def with_env(pairs)
+  previous = pairs.keys.to_h { |key| [key, ENV[key]] }
+  pairs.each { |key, value| value.nil? ? ENV.delete(key) : ENV[key] = value.to_s }
+  yield
+ensure
+  previous.each { |key, value| value.nil? ? ENV.delete(key) : ENV[key] = value }
+end
+
+def session_id(prefix, index)
+  "#{prefix}-#{index}"
+end
+
+def percent(ratio)
+  "-#{(ratio * 100).round}%"
+end
+
 markdown = ARGV.include?("--markdown")
 mode = api_key ? "Anthropic count_tokens API" : "estimate (chars / 4)"
-failed = false
-rows = []
+@failed = false
 
-SCENARIOS.each do |scenario|
+def fail!(message)
+  warn message
+  @failed = true
+end
+
+# ---------------------------------------------------------------- section 1
+
+rows = []
+footer_bytes = 0
+naming_bytes = 0
+footer_saved = 0
+
+SCENARIOS.each_with_index do |scenario, index|
   original = read_fixture(scenario)
   label = scenario[:file] || scenario[:name]
-  result = LeanOutput::Runner.call(payload_for(scenario, original))
+  compressed = updated(LeanOutput::Runner.call(payload_for(scenario, original, session_id("s1", index))))
 
-  unless result
+  unless compressed
     rows << [scenario[:name], original.bytesize, nil, count_tokens(original), nil, nil]
     next
   end
 
-  compressed = result.dig("hookSpecificOutput", "updatedToolOutput")
   reduction = 1.0 - compressed.bytesize.to_f / original.bytesize
 
   extracted, missing = lost(original, compressed)
-  unless missing.empty?
-    warn "LOST LOCATIONS in #{label}: #{missing.join(", ")}"
-    failed = true
-  end
+  fail!("LOST LOCATIONS in #{label}: #{missing.join(", ")}") unless missing.empty?
 
   # A fixture full of failures from which we extract nothing would satisfy the
   # invariant vacuously — the extractor, not the compressor, would be broken.
   if scenario[:expect_locations] && extracted.empty?
-    warn "NO LOCATIONS EXTRACTED from #{label}: the invariant is vacuous here"
-    failed = true
+    fail!("NO LOCATIONS EXTRACTED from #{label}: the invariant is vacuous here")
   end
 
   dropped = unclaimed(scenario).reject { |text| compressed.include?(text) }
-  unless dropped.empty?
-    warn "LOST UNCLAIMED OUTPUT in #{label}: #{dropped.size} block(s) no compressor owned"
-    failed = true
-  end
+  fail!("LOST UNCLAIMED OUTPUT in #{label}: #{dropped.size} block(s) no compressor owned") unless dropped.empty?
 
   cells = json_cells(original)
   missing_cells = cells.reject { |cell| compressed.include?(cell) }
-  unless missing_cells.empty?
-    warn "LOST CELLS in #{label}: #{missing_cells.take(5).join(", ")}"
-    failed = true
-  end
-
-  if scenario[:expect_cells] && cells.empty?
-    warn "NO CELLS EXTRACTED from #{label}: the invariant is vacuous here"
-    failed = true
-  end
+  fail!("LOST CELLS in #{label}: #{missing_cells.take(5).join(", ")}") unless missing_cells.empty?
+  fail!("NO CELLS EXTRACTED from #{label}: the invariant is vacuous here") if scenario[:expect_cells] && cells.empty?
 
   target = scenario[:target] || (scenario[:must_hit_target] ? TARGET : nil)
   if target && reduction < target
-    warn "BELOW TARGET in #{label}: -#{(reduction * 100).round(1)}% (target -#{(target * 100).round}%)"
-    failed = true
+    fail!("BELOW TARGET in #{label}: -#{(reduction * 100).round(1)}% (target -#{(target * 100).round}%)")
+  end
+
+  dropped = LeanOutput.discards(original, command: scenario[:command])
+  bare = LeanOutput::Runner.footer(original.bytesize, compressed.bytesize)
+  named = LeanOutput::Runner.footer(original.bytesize, compressed.bytesize, dropped)
+  footer_bytes += bare.bytesize
+  naming_bytes += named.bytesize - bare.bytesize
+  footer_saved += original.bytesize - compressed.bytesize
+
+  # The receipt is the last line of what the model sees, so a rewrite that lost
+  # something has to be the rewrite that says so.
+  if dropped.empty? && !LeanOutput.lossless?(original, command: scenario[:command])
+    fail!("SILENT LOSS in #{label}: a lossy rewrite that names nothing it dropped")
   end
 
   rows << [scenario[:name], original.bytesize, compressed.bytesize,
            count_tokens(original), count_tokens(compressed), reduction]
 end
 
-NEGATIVE.each do |scenario|
+NEGATIVE.each_with_index do |scenario, index|
   original = read_fixture(scenario)
-  result = LeanOutput::Runner.call(payload_for(scenario, original))
+  session = session_id("neg", index)
+  # `repeat` sends the same result twice: the claim is not "the ledger did not
+  # fire on a first sighting" — nothing fires on a first sighting — but that it
+  # stays quiet even when it has the digest in hand.
+  LeanOutput::Runner.call(payload_for(scenario, original, session)) if scenario[:repeat]
+  result = LeanOutput::Runner.call(payload_for(scenario, original, session))
 
-  next unless result
-
-  warn "MUST NOT COMPRESS — #{scenario[:name]}: #{scenario[:why]}"
-  failed = true
+  fail!("MUST NOT COMPRESS — #{scenario[:name]}: #{scenario[:why]}") if result
 end
+
+# ---------------------------------------------------------------- section 2
+
+def replay(simulation, session)
+  before = 0
+  after = 0
+  hits = 0
+
+  with_env("LEAN_OUTPUT_WINDOW" => simulation[:window]) do
+    simulation[:steps].each do |tool, name, file, suffix|
+      body = "#{fixture(file)}#{suffix}"
+      scenario = tool == "Read" ? { tool: "Read", path: name } : { tool: tool, command: name }
+      scenario = { command: name } if tool == "Bash"
+      result = updated(LeanOutput::Runner.call(payload_for(scenario, body, session)))
+
+      before += body.bytesize
+      after += (result || body).bytesize
+      next unless result&.include?("byte-identical to")
+
+      hits += 1
+      # The reference exists to be shorter. One that is not would be a rung that
+      # costs context to save context.
+      fail!("REFERENCE NOT SMALLER in #{simulation[:name]}") unless result.bytesize < body.bytesize
+    end
+  end
+
+  [before, after, hits]
+end
+
+ledger_rows = LEDGER_SESSIONS.each_with_index.map do |simulation, index|
+  before, after, hits = replay(simulation, session_id("ledger", index))
+
+  if hits != simulation[:hits]
+    fail!("LEDGER MISCOUNT in #{simulation[:name]}: #{hits} reference(s), expected #{simulation[:hits]}")
+  end
+
+  [simulation[:name], simulation[:steps].size, hits, before, after,
+   before.zero? ? 0.0 : 1.0 - after.to_f / before]
+end
+
+# ---------------------------------------------------------------- section 3
+
+mode_rows = LeanOutput::Mode::LEVELS.map do |level|
+  before = 0
+  after = 0
+  rewrites = 0
+  ledger = nil
+
+  with_env("LEAN_OUTPUT_MODE" => level) do
+    SCENARIOS.each_with_index do |scenario, index|
+      original = read_fixture(scenario)
+      compressed = updated(LeanOutput::Runner.call(payload_for(scenario, original, session_id("m-#{level}", index))))
+
+      before += original.bytesize
+      after += (compressed || original).bytesize
+      next unless compressed
+
+      rewrites += 1
+      _, missing = lost(original, compressed)
+      # Every level keeps every location. A level that saves more by losing one
+      # is not a level, it is a different product.
+      fail!("LOST LOCATIONS at #{level} in #{scenario[:name]}: #{missing.join(", ")}") unless missing.empty?
+      if level == "off"
+        fail!("MODE off REWROTE #{scenario[:name]}: the kill switch has to be absolute")
+      end
+    end
+
+    # The compressor corpus gives every scenario its own session, so nothing in
+    # it can ever repeat — which would make `safe` look like `off` and hide the
+    # whole point of the level. The ledger sessions are replayed under the same
+    # level to say what it actually keeps.
+    ledger = LEDGER_SESSIONS.each_with_index.map { |sim, i| replay(sim, session_id("ml-#{level}", i)) }
+  end
+
+  ledger_before = ledger.sum { |b, _, _| b }
+  ledger_after = ledger.sum { |_, a, _| a }
+  ledger_hits = ledger.sum { |_, _, h| h }
+
+  if level != "off" && ledger_hits != LEDGER_SESSIONS.sum { |sim| sim[:hits] }
+    fail!("LEDGER WEAKENED AT #{level}: #{ledger_hits} references, expected the same as at full")
+  end
+  fail!("MODE off USED THE LEDGER: #{ledger_hits} references") if level == "off" && ledger_hits.positive?
+
+  [level, rewrites, before, after, 1.0 - after.to_f / before,
+   ledger_hits, 1.0 - ledger_after.to_f / ledger_before]
+end
+
+# ---------------------------------------------------------------- section 4
+
+# One synthetic session whose repeats sit at growing distances, replayed once
+# per candidate window. The curve is the answer to "how far back is it still
+# safe to point" turned into something measurable: every extra hit is a result
+# withheld, and every extra hit is also one more pointer that a compaction could
+# strand.
+def curve_trace
+  filler = 0
+  GAPS.flat_map do |gap|
+    # Each group needs its own bytes, or every repeat would match every other
+    # group's and the curve would count more references than there are repeats.
+    body = "#{fixture("rspec_failures.txt")}\n# group #{gap}\n"
+    between = Array.new(gap) do
+      filler += 1
+      "filler #{filler}\n#{"padding line #{filler}\n" * 400}"
+    end
+    [["repeat-#{gap}", body], *between.map { |text| ["filler-#{gap}", text] }, ["repeat-#{gap}", body]]
+  end
+end
+
+TRACE = curve_trace.freeze
+
+window_rows = WINDOWS.map do |window|
+  session = "window-#{window}"
+  hits = 0
+  withheld = 0
+
+  with_env("LEAN_OUTPUT_WINDOW" => window) do
+    TRACE.each do |path, body|
+      result = updated(LeanOutput::Runner.call(payload_for({ tool: "Read", path: path }, body, session)))
+      next unless result&.include?("byte-identical to")
+
+      hits += 1
+      withheld += body.bytesize - result.bytesize
+    end
+  end
+
+  fail!("IMPOSSIBLE HIT COUNT at window #{window}: #{hits} references for #{GAPS.size} repeats") if hits > GAPS.size
+  [window, hits, GAPS.size, withheld]
+end
+
+# A wider window can only ever reach further back, so the curve has to climb.
+window_rows.each_cons(2) do |(narrow, fewer), (wide, more)|
+  fail!("NON-MONOTONIC WINDOW: #{narrow} found #{fewer}, #{wide} found #{more}") if more < fewer
+end
+
+# ---------------------------------------------------------------- output
+
+def table(markdown, header, rows)
+  if markdown
+    puts "| #{header.join(" | ")} |"
+    puts "|#{(["---"] * header.size).join("|")}|"
+    rows.each { |row| puts "| #{row.join(" | ")} |" }
+  else
+    widths = header.each_index.map { |i| ([header[i], *rows.map { |r| r[i].to_s }].map(&:length)).max }
+    line = ->(cells) { puts cells.each_with_index.map { |cell, i| cell.to_s.ljust(widths[i]) }.join("  ").rstrip }
+    line.call(header)
+    line.call(widths.map { |w| "-" * w })
+    rows.each { |row| line.call(row) }
+  end
+  puts
+end
+
+puts markdown ? "## 1. Compressors\n\n" : "\n== 1. compressors (rung 7) ==\n\n"
+table(markdown, ["Scenario", "Chars", "Tokens¹", "Reduction"],
+      rows.map do |name, cb, ca, tb, ta, red|
+        ca ? [name, "#{cb} → #{ca}", "#{tb} → #{ta}", percent(red)] : [name, cb.to_s, tb.to_s, "passthrough²"]
+      end)
+
+puts markdown ? "## 2. Ledger\n\n" : "== 2. ledger (rungs 1+2) ==\n\n"
+table(markdown, ["Simulated session", "Calls", "References", "Bytes", "Reduction"],
+      ledger_rows.map do |name, calls, hits, before, after, red|
+        [name, calls.to_s, hits.to_s, "#{before} → #{after}", percent(red)]
+      end)
+
+puts markdown ? "## 3. Modes over the same corpus\n\n" : "== 3. modes over the same corpus ==\n\n"
+table(markdown, ["Mode", "Rewrites", "Bytes", "Reduction", "Refs", "Sessions", "What it means"],
+      mode_rows.map do |level, rewrites, before, after, red, refs, ledger_red|
+        [level, "#{rewrites}/#{SCENARIOS.size}", "#{before} → #{after}", percent(red),
+         refs.to_s, percent(ledger_red), LeanOutput::Mode::DESCRIPTION.fetch(level)]
+      end)
+
+floors = LeanOutput::Mode::LEVELS.filter_map { |level| LeanOutput::Mode.policy(level)&.fetch(:min_bytes) }
+band = (floors.min...floors.max)
+in_band = SCENARIOS.count { |scenario| band.cover?(read_fixture(scenario).bytesize) }
+if mode_rows.find { |row| row[0] == "full" }[3] == mode_rows.find { |row| row[0] == "ultra" }[3]
+  puts "full and ultra tie here: the two differ at the byte floor (#{band}) and at the margin a lossy"
+  puts "rewrite has to clear, and #{in_band} of #{SCENARIOS.size} scenarios land in that band. Fixtures are"
+  puts "chosen to be interesting, and an interesting output is a long one — a real session is where"
+  puts "ultra pays, and the scoreboard, not this table, is what says whether it did.\n\n"
+end
+
+puts markdown ? "## 4. Recency window\n\n" : "== 4. recency window ==\n\n"
+table(markdown, ["Window", "References", "Repeats available", "Bytes withheld"],
+      window_rows.map { |window, hits, total, withheld| [window.to_s, hits.to_s, total.to_s, withheld.to_s] })
+
+footer_share = footer_saved.zero? ? 0.0 : footer_bytes.to_f / footer_saved
+puts markdown ? "## 5. Footer cost\n\n" : "== 5. footer cost ==\n\n"
+puts "#{rows.count { |row| row[2] }} rewrites carry #{footer_bytes} bytes of receipt " \
+     "against #{footer_saved} bytes saved (#{(footer_share * 100).round(2)}% of the win)."
+puts "Naming what was dropped adds #{naming_bytes} bytes on top " \
+     "(#{(naming_bytes.to_f / footer_saved * 100).round(2)}% of the win, " \
+     "#{(naming_bytes.to_f / footer_bytes * 100).round}% on top of the receipt itself)."
+puts
 
 if markdown
-  puts "| Scenario | Chars | Tokens¹ | Reduction |"
-  puts "|---|---|---|---|"
-  rows.each do |name, cb, ca, tb, ta, red|
-    if ca
-      puts "| #{name} | #{cb} → #{ca} | #{tb} → #{ta} | **-#{(red * 100).round}%** |"
-    else
-      puts "| #{name} | #{cb} | #{tb} | passthrough² |"
-    end
-  end
-  puts "\n¹ #{mode}. ² Untouched: small outputs are never rewritten."
+  puts "¹ #{mode}. ² Untouched: small outputs are never rewritten."
 else
-  puts format("%-30s %15s %15s %10s", "scenario", "chars", "tokens", "reduction")
-  rows.each do |name, cb, ca, tb, ta, red|
-    if ca
-      puts format("%-30s %6d → %6d %6d → %6d %9s", name, cb, ca, tb, ta, "-#{(red * 100).round}%")
-    else
-      puts format("%-30s %15d %15d %10s", name, cb, tb, "passthrough")
-    end
-  end
-  puts "\ntokens: #{mode}"
+  puts "tokens: #{mode}"
 end
 
-if failed
+if @failed
   warn "\nBENCH FAILED"
   exit 1
 end
 
-puts "\nAll checks passed: zero lost locations, every scenario yields locations, " \
+puts "\nAll checks passed: zero lost locations at every mode, every scenario yields locations, " \
+     "#{LEDGER_SESSIONS.size} ledger sessions reference exactly what they should, " \
      "#{NEGATIVE.size} negative cases left untouched."

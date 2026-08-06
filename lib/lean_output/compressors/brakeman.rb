@@ -37,6 +37,8 @@ module LeanOutput
         command_match?(command) && output_match?(output)
       end
 
+      def self.discards = 'scan configuration, the checks list'
+
       def self.summary(plain)
         count = plain[/^Security Warnings: (\d+)$/, 1] or return nil
         errors = plain[/^Errors: (\d+)$/, 1].to_i

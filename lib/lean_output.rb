@@ -1,6 +1,10 @@
 # frozen_string_literal: true
 
 require_relative 'lean_output/text'
+require_relative 'lean_output/mode'
+require_relative 'lean_output/session'
+require_relative 'lean_output/ledger'
+require_relative 'lean_output/scoreboard'
 require_relative 'lean_output/budget'
 require_relative 'lean_output/shell'
 require_relative 'lean_output/region'
@@ -17,7 +21,7 @@ require_relative 'lean_output/detector'
 require_relative 'lean_output/runner'
 
 module LeanOutput
-  VERSION = '0.8.0'
+  VERSION = '0.9.0'
 
   # Entry point for callers outside the Claude Code hook: agent orchestrators
   # injecting tool output into a prompt, CI scripts, log processors.
@@ -41,7 +45,7 @@ module LeanOutput
 
     return result if result.equal?(original) || !footer
 
-    result + Runner.footer(original.bytesize, result.bytesize)
+    result + Runner.footer(original.bytesize, result.bytesize, discards(original, command: command))
   rescue StandardError
     text.to_s
   end
@@ -53,6 +57,16 @@ module LeanOutput
   def self.lossless?(text, command: nil)
     claimants = candidates(Text.plain(text.to_s), command)
     claimants.any? && claimants.all?(&:lossless?)
+  end
+
+  # What the claiming compressors will have thrown away, deduplicated across
+  # them. The hook prints it beside the savings: a summary that names what is
+  # gone can be checked, and one that only says how much smaller it got asks to
+  # be trusted instead.
+  def self.discards(text, command: nil)
+    candidates(Text.plain(text.to_s), command).filter_map(&:discards).flat_map { |phrase| phrase.split(', ') }.uniq
+  rescue StandardError
+    []
   end
 
   def self.rewrite(output, command)

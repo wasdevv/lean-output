@@ -1,0 +1,46 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# The mid-session switch, and the receipt for it.
+#
+#   lean            level and what it has saved so far
+#   lean ultra      switch this working directory to ultra
+#   lean off        stop compressing here, without uninstalling anything
+#
+# The level is written to a flag file rather than held in memory because the
+# hook that reads it is a fresh process on every tool call. Keyed by working
+# directory: this command knows where it is, not which conversation it is in.
+
+require_relative '../lib/lean_output'
+
+def report(cwd)
+  level = LeanOutput::Mode.resolve(cwd)
+  puts "lean-output #{LeanOutput::VERSION} — mode: #{level}#{source(cwd, level)}"
+  puts LeanOutput::Scoreboard.render(cwd)
+end
+
+def source(cwd, level)
+  return ' (LEAN_OUTPUT_DISABLE=1)' if ENV['LEAN_OUTPUT_DISABLE'] == '1'
+  return ' (LEAN_OUTPUT_MODE)' if LeanOutput::Mode.normalize(ENV['LEAN_OUTPUT_MODE'])
+  return '' if LeanOutput::Mode.normalize(LeanOutput::Mode.flag(cwd)) == level
+
+  ' (default)'
+end
+
+cwd = Dir.pwd
+argument = ARGV.first
+
+case argument
+when nil then report(cwd)
+when '-v', '--version' then puts LeanOutput::VERSION
+when '-h', '--help' then puts "usage: lean [#{LeanOutput::Mode::LEVELS.join('|')}]"
+else
+  level = LeanOutput::Mode.write(cwd, argument)
+  if level
+    puts "lean-output: #{level} in #{cwd}"
+    puts LeanOutput::Mode::DESCRIPTION.fetch(level)
+  else
+    warn "lean-output: unknown mode #{argument.inspect} (pick one of #{LeanOutput::Mode::LEVELS.join(', ')})"
+    exit 1
+  end
+end

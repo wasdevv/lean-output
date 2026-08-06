@@ -49,6 +49,8 @@ module LeanOutput
         command_match?(command) && output_match?(output)
       end
 
+      def self.discards = 'passing examples, gem backtrace frames'
+
       def self.summary(plain)
         summary = plain[SUMMARY] or return nil
         finished = plain[/^Finished in .+$/]&.sub(/ \(files took.*\)/, '')

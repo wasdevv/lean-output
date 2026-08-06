@@ -34,6 +34,8 @@ module LeanOutput
         command_match?(command) && output_match?(output)
       end
 
+      def self.discards = 'inspection progress, source excerpts'
+
       def self.summary(plain)
         summary = plain[SUMMARY] or return nil
 

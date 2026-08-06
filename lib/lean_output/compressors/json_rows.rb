@@ -37,6 +37,8 @@ module LeanOutput
         command_match?(command) && output_match?(output)
       end
 
+      def self.discards = 'repeated keys and JSON punctuation'
+
       def self.summary(plain)
         rows = rows(plain) or return nil
         columns = rows.first.keys

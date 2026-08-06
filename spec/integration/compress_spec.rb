@@ -19,13 +19,23 @@ RSpec.describe 'bin/compress' do
     }
   end
 
+  # A Read arrives as a structured result, not a stdout string — the ledger has
+  # to reach through `file.content` to see the bytes it is deduplicating.
+  def read_payload(path, content)
+    {
+      'tool_name' => 'Read',
+      'tool_input' => { 'file_path' => path },
+      'tool_response' => { 'type' => 'text', 'file' => { 'filePath' => path, 'content' => content } }
+    }
+  end
+
   it 'compresses a failing rspec run and reports the savings' do
     original = fixture('rspec_failures.txt')
     stdout, _, status = run_hook(payload_for('bundle exec rspec', original))
 
     expect(status.exitstatus).to eq(0)
     result = JSON.parse(stdout)
-    updated = result.dig('hookSpecificOutput', 'updatedToolOutput')
+    updated = updated_text(result)
     expect(result.dig('hookSpecificOutput', 'hookEventName')).to eq('PostToolUse')
     expect(updated).to include('106 examples, 3 failures')
     expect(updated).to include('./spec/lean_output_fixture_tmp_spec.rb:4')
@@ -45,7 +55,7 @@ RSpec.describe 'bin/compress' do
     expect(status.exitstatus).to eq(0)
     result = JSON.parse(stdout)
     expect(result.dig('hookSpecificOutput', 'hookEventName')).to eq('PostToolUseFailure')
-    updated = result.dig('hookSpecificOutput', 'updatedToolOutput')
+    updated = updated_text(result)
     expect(updated).to start_with("Exit code 1\n")
     expect(updated).to include('3 failures')
   end
@@ -54,7 +64,7 @@ RSpec.describe 'bin/compress' do
     stdout, _, status = run_hook(payload_for('bin/rubocop app/', fixture('rubocop_offenses.txt')))
 
     expect(status.exitstatus).to eq(0)
-    updated = JSON.parse(stdout).dig('hookSpecificOutput', 'updatedToolOutput')
+    updated = updated_text(JSON.parse(stdout))
     expect(updated).to include('13 offenses detected')
   end
 
@@ -64,7 +74,7 @@ RSpec.describe 'bin/compress' do
                                  ))
 
     expect(status.exitstatus).to eq(0)
-    expect(JSON.parse(stdout).dig('hookSpecificOutput', 'updatedToolOutput')).to include('3 failures')
+    expect(updated_text(JSON.parse(stdout))).to include('3 failures')
   end
 
   describe 'MCP tool results' do
@@ -81,7 +91,7 @@ RSpec.describe 'bin/compress' do
       stdout, _, status = run_hook(mcp_payload('mcp__insforge__query', original))
 
       expect(status.exitstatus).to eq(0)
-      updated = JSON.parse(stdout).dig('hookSpecificOutput', 'updatedToolOutput')
+      updated = updated_text(JSON.parse(stdout))
       expect(updated).to include('JSON rows: 40 rows, 7 columns')
       expect(updated.bytesize).to be < original.bytesize * 0.45
     end
@@ -89,7 +99,7 @@ RSpec.describe 'bin/compress' do
     it 'keeps every value the query returned' do
       original = fixture('mcp_query_rows.json')
       stdout, = run_hook(mcp_payload('mcp__insforge__query', original))
-      updated = JSON.parse(stdout).dig('hookSpecificOutput', 'updatedToolOutput')
+      updated = updated_text(JSON.parse(stdout))
 
       JSON.parse(original).each do |row|
         row.each_value { |value| expect(updated).to include(value.nil? ? 'null' : value.to_s) }
@@ -115,13 +125,14 @@ RSpec.describe 'bin/compress' do
       stdout, _, status = run_hook(payload_for('grep -rn "plain" lib/', original))
 
       expect(status.exitstatus).to eq(0)
-      updated = JSON.parse(stdout).dig('hookSpecificOutput', 'updatedToolOutput')
+      updated = updated_text(JSON.parse(stdout))
       expect(updated).to include("lib/lean_output.rb\n")
 
       # Between the two floors: at this ratio a lossy compressor stays put.
+      policy = LeanOutput::Mode::POLICY.fetch('full')
       saving = 1.0 - updated.bytesize.to_f / original.bytesize
-      expect(saving).to be > (1 - LeanOutput::Runner::LOSSLESS_RATIO)
-      expect(saving).to be < (1 - LeanOutput::Runner::MAX_RATIO)
+      expect(saving).to be > (1 - policy.fetch(:lossless_ratio))
+      expect(saving).to be < (1 - policy.fetch(:ratio))
     end
   end
 
@@ -138,8 +149,14 @@ RSpec.describe 'bin/compress' do
       expect(stdout).to be_empty
     end
 
-    it 'stays silent for non-Bash tools' do
-      stdout, _, status = run_hook(payload_for('rspec', fixture('rspec_failures.txt')).merge('tool_name' => 'Read'))
+    it 'stays silent for a tool no compressor claims' do
+      stdout, _, status = run_hook(payload_for('rspec', fixture('rspec_failures.txt')).merge('tool_name' => 'Glob'))
+      expect(status.exitstatus).to eq(0)
+      expect(stdout).to be_empty
+    end
+
+    it 'stays silent for a Read the session has not seen' do
+      stdout, _, status = run_hook(read_payload('lib/lean_output.rb', fixture('rspec_failures.txt')))
       expect(status.exitstatus).to eq(0)
       expect(stdout).to be_empty
     end
@@ -157,6 +174,59 @@ RSpec.describe 'bin/compress' do
       )
       expect(status.exitstatus).to eq(0)
       expect(stdout).to be_empty
+    end
+  end
+
+  describe 'the ledger' do
+    it 'points a repeated Read back at the first one instead of resending it' do
+      payload = read_payload('lib/lean_output.rb', fixture('rspec_failures.txt'))
+      run_hook(payload)
+      stdout, _, status = run_hook(payload)
+
+      expect(status.exitstatus).to eq(0)
+      updated = updated_text(JSON.parse(stdout))
+      expect(updated).to include('byte-identical to Read lib/lean_output.rb')
+      expect(updated).to include('1 tool call back')
+    end
+
+    it 'resends a Read whose content changed by a single byte' do
+      run_hook(read_payload('lib/lean_output.rb', fixture('rspec_failures.txt')))
+      stdout, _, status = run_hook(read_payload('lib/lean_output.rb', "#{fixture('rspec_failures.txt')} "))
+
+      expect(status.exitstatus).to eq(0)
+      expect(stdout).to be_empty
+    end
+
+    it 'keeps enough of the head to recognise what the pointer points at' do
+      payload = read_payload('lib/lean_output.rb', fixture('rspec_failures.txt'))
+      run_hook(payload)
+      stdout, = run_hook(payload)
+
+      updated = updated_text(JSON.parse(stdout))
+      expect(updated.lines.size).to eq(3)
+      expect(updated).to include(fixture('rspec_failures.txt').lines.first.chomp[0, 40])
+    end
+
+    # The window is measured in the tool-output bytes that went by since, so it
+    # takes a call in between to push the first occurrence out of reach.
+    it 'forgets a result that fell out of the recency window' do
+      payload = read_payload('lib/lean_output.rb', fixture('rspec_failures.txt'))
+      run_hook(payload)
+      run_hook(read_payload('lib/lean_output/text.rb', fixture('rubocop_offenses.txt')))
+      stdout, _, status = run_hook(payload, { 'LEAN_OUTPUT_WINDOW' => '100' })
+
+      expect(status.exitstatus).to eq(0)
+      expect(stdout).to be_empty
+    end
+
+    it 'still points back when the window is wide enough to reach' do
+      payload = read_payload('lib/lean_output.rb', fixture('rspec_failures.txt'))
+      run_hook(payload)
+      run_hook(read_payload('lib/lean_output/text.rb', fixture('rubocop_offenses.txt')))
+      stdout, = run_hook(payload)
+
+      updated = updated_text(JSON.parse(stdout))
+      expect(updated).to include('2 tool calls back')
     end
   end
 end

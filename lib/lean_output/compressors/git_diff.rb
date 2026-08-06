@@ -60,6 +60,8 @@ module LeanOutput
         command_match?(command) && output_match?(output)
       end
 
+      def self.discards = 'hunks of generated files'
+
       def self.summary(plain)
         parts = plain.split(SPLIT)
         # split drops nothing when the string opens with the pattern, so the

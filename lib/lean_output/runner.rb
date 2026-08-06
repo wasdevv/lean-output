@@ -70,7 +70,16 @@ module LeanOutput
         return [reference, true] if reference && reference.bytesize < output.bytesize * policy[:ratio]
       end
 
-      [clip(compressed(tool, payload, output, policy) || output, output, policy), false]
+      claimed = compressed(tool, payload, output, policy)
+      # The vault is offered only what no compressor wanted. A compressed
+      # result is distilled signal — putting *that* behind a pointer would hide
+      # the failures someone is about to read, and the bytes it replaced are
+      # already gone anyway. Raw output nobody could claim is the opposite: it
+      # is where the size is and where the redundancy is unprovable, so it goes
+      # to disk whole instead of being argued with.
+      spilled = Vault.spill(session, Ledger.label(tool, payload), output, policy) if claimed.nil?
+
+      [clip(spilled || claimed || output, output, policy), false]
     end
     private_class_method :decide
 

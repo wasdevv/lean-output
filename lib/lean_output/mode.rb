@@ -46,12 +46,23 @@ module LeanOutput
     # this plugin already measures against its own control.
     CAP_BYTES = 4_000
 
+    # Where an unclaimed result stops being worth carrying and starts being
+    # worth pointing at. Below it the pointer costs more than the bytes it
+    # replaces; the notice alone is ~220B and the preview 400B.
+    #
+    # Measured over 8745 real results, spilling everything unclaimed above this
+    # takes the corpus from 9.69MB to 3.36MB — **-65%**, against -22% for the
+    # ceiling and -6% for the compressors. Raising it to 1500B gives back 6
+    # points and to 3000B gives back 23, so the aggressive end is where the
+    # whole difference lives.
+    SPILL_BYTES = 800
+
     POLICY = {
       'off' => nil,
       'safe' => { min_bytes: 400, ratio: 0.85, lossless_only: true },
       'full' => { min_bytes: 400, ratio: 0.70, lossless_ratio: 0.85 },
       'ultra' => { min_bytes: 200, ratio: 0.85, lossless_ratio: 0.95 },
-      'volatile' => { min_bytes: 200, ratio: 0.85, lossless_ratio: 0.95, cap: CAP_BYTES }
+      'volatile' => { min_bytes: 200, ratio: 0.85, lossless_ratio: 0.95, cap: CAP_BYTES, spill: SPILL_BYTES }
     }.freeze
 
     DESCRIPTION = {
@@ -59,7 +70,8 @@ module LeanOutput
       'safe' => 'only rewrites that discard nothing, plus the ledger.',
       'full' => 'compressors and the ledger, at the measured floors.',
       'ultra' => 'a lower floor and a thinner margin — more rewrites, smaller wins each.',
-      'volatile' => "ultra plus a hard #{Text.human(CAP_BYTES)} ceiling on every result — the long tail gets clipped, and says so."
+      'volatile' => "ultra plus the vault: anything over #{Text.human(SPILL_BYTES)} no compressor claimed " \
+                    "goes to a file and comes back as its two ends and a path, with a #{Text.human(CAP_BYTES)} ceiling behind it."
     }.freeze
 
     CONFIG_FILE = 'config.json'

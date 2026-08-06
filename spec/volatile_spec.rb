@@ -2,14 +2,20 @@
 
 require 'spec_helper'
 
-# The only rung that removes content it cannot argue was redundant.
+# `volatile` is two rungs the other levels do not have, and they answer
+# different questions about the same result.
 #
-# It exists because of the shape of the corpus, not the shape of the code: over
-# 8694 real results the largest 10% of calls hold 50.1% of the bytes. A
-# compressor works the median result and wins a fraction of 1261B; a ceiling
-# works the tail, where the bytes are. 4000B clips 6% of calls for -18.3%.
-RSpec.describe 'the volatile ceiling' do
-  def run(command, output, level: 'volatile')
+# The vault answers "does this have to be in the context window at all" — the
+# bytes go to a file and come back as their two ends and a path, losing
+# nothing. The ceiling answers "how big may a rewrite be" and is the only place
+# in this plugin where content is actually discarded, so it applies to what a
+# compressor already distilled and never to raw output the vault can keep.
+#
+# The case for both is the shape of the corpus: over 8745 real results the
+# largest 10% of calls hold 50.1% of the bytes and the median is 1261B. The
+# vault takes that corpus to -65%, the ceiling alone to -22%, compressors -6%.
+RSpec.describe 'the volatile level' do
+  def bash(command, output, level: 'volatile')
     ENV['LEAN_OUTPUT_MODE'] = level
     LeanOutput::Runner.call(
       'session_id' => "volatile-#{rand(1 << 32)}",
@@ -30,55 +36,87 @@ RSpec.describe 'the volatile ceiling' do
 
   let(:long) { (1..4000).map { |n| "line #{n} of something incompressible #{n * 7919}" }.join("\n") }
 
-  it 'leaves a result that already fits alone' do
-    expect(run('echo hi', "small\n" * 3)).to be_nil
+  def vault_path(text)
+    text[/Full output: (\S+)/, 1]
   end
 
-  it 'brings a result over the ceiling under it' do
-    expect(run('cat big.log', long).bytesize).to be <= LeanOutput::Mode::CAP_BYTES + 300
+  describe 'the vault' do
+    it 'leaves a result that is cheaper to carry than to point at' do
+      expect(bash('echo hi', "small\n" * 3)).to be_nil
+    end
+
+    it 'replaces a long unclaimed result with its ends and a path' do
+      pointer = bash('cat big.log', long)
+
+      expect(pointer.bytesize).to be < 1_500
+      expect(pointer).to include('line 1 of something')
+      expect(pointer).to include('line 4000 of something')
+      expect(pointer).not_to include('line 2000 of something')
+    end
+
+    # The whole difference between this rung and the ceiling: nothing was
+    # destroyed, so the middle is a Read away rather than gone.
+    it 'writes the original byte for byte where it says it did' do
+      path = vault_path(bash('cat big.log', long))
+
+      expect(File.read(path)).to eq(long)
+    end
+
+    it 'tells the model how to get the middle back' do
+      pointer = bash('cat big.log', long)
+
+      expect(pointer).to include('nothing was lost')
+      expect(pointer).to match(/Read that path .* or grep it/)
+    end
+
+    it 'spills a Read the same way it spills a Bash result' do
+      ENV['LEAN_OUTPUT_MODE'] = 'volatile'
+      result = LeanOutput::Runner.call(
+        'session_id' => 'volatile-read', 'tool_name' => 'Read',
+        'tool_input' => { 'file_path' => '/tmp/big.rb' },
+        'tool_response' => { 'type' => 'text',
+                             'file' => { 'filePath' => '/tmp/big.rb', 'content' => long } }
+      )
+
+      content = result.dig('hookSpecificOutput', 'updatedToolOutput', 'file', 'content')
+      expect(File.read(vault_path(content))).to eq(long)
+    end
+
+    # A compressed result is distilled signal. Hiding *that* behind a pointer
+    # would put the failures someone is about to read one tool call further
+    # away, and the bytes it replaced are already gone.
+    it 'never spills what a compressor claimed' do
+      rspec = File.read('spec/fixtures/rspec_failures.txt')
+      pointer = bash('bundle exec rspec', rspec)
+
+      expect(pointer).not_to include('Full output:')
+      expect(pointer).to include('rspec ./')
+    end
+
+    it 'is off at every level below volatile' do
+      expect(bash('cat big.log', long, level: 'ultra')).to be_nil
+      expect(bash('cat big.log', long, level: 'full')).to be_nil
+    end
   end
 
-  # The ends carry the subject and the verdict; the middle is what repeats.
-  it 'keeps both ends and drops the middle' do
-    clipped = run('cat big.log', long)
+  describe 'the ceiling' do
+    it 'brings a rewrite that is still enormous under the cap' do
+      text = 'x' * 20_000
+      clipped = LeanOutput::Text.clip(text, LeanOutput::Mode::CAP_BYTES)
 
-    expect(clipped).to include('line 1 of something')
-    expect(clipped).to include('line 4000 of something')
-    expect(clipped).not_to include('line 2000 of something')
-  end
+      expect(clipped.bytesize).to be <= LeanOutput::Mode::CAP_BYTES + 5
+    end
 
-  # The trust boundary. Every other rewrite here can defend itself as
-  # redundancy removal; this one cannot, so a model that is not told it holds a
-  # fragment will answer as if it read the whole thing.
-  it 'says it was clipped and how to get the rest' do
-    clipped = run('cat big.log', long)
+    it 'exists only at volatile' do
+      expect(LeanOutput::Mode::POLICY['ultra'][:cap]).to be_nil
+      expect(LeanOutput::Mode::POLICY['volatile'][:cap]).to eq(LeanOutput::Mode::CAP_BYTES)
+    end
 
-    expect(clipped).to include('clipped')
-    expect(clipped).to include('offset/limit')
-    expect(clipped).to match(/re-run the command narrower/)
-  end
-
-  it 'caps a Read the same way it caps a Bash result' do
-    ENV['LEAN_OUTPUT_MODE'] = 'volatile'
-    result = LeanOutput::Runner.call(
-      'session_id' => 'volatile-read', 'tool_name' => 'Read',
-      'tool_input' => { 'file_path' => '/tmp/big.rb' },
-      'tool_response' => { 'type' => 'text', 'file' => { 'filePath' => '/tmp/big.rb', 'content' => long } }
-    )
-
-    content = result.dig('hookSpecificOutput', 'updatedToolOutput', 'file', 'content')
-    expect(content.bytesize).to be < long.bytesize
-    expect(content).to include('clipped')
-  end
-
-  it 'is never reached by a session that merely got long' do
-    expect(LeanOutput::Mode.policy('ultra', depth: 10_000_000)).to eq(LeanOutput::Mode::POLICY['ultra'])
-    expect(LeanOutput::Mode.policy('full', depth: 10_000_000)).to eq(LeanOutput::Mode::POLICY['ultra'])
-  end
-
-  # nil is the passthrough: at `ultra` the same 190kB reaches the model whole,
-  # because nothing below `volatile` has a ceiling at all.
-  it 'leaves every other level without a ceiling' do
-    expect(run('cat big.log', long, level: 'ultra')).to be_nil
+    # It is the only rung that can lose something, so nothing may arrive at it
+    # by accident — a session that merely got long climbs to ultra and stops.
+    it 'is never reached by a session that merely got long' do
+      expect(LeanOutput::Mode.policy('ultra', depth: 10_000_000)).to eq(LeanOutput::Mode::POLICY['ultra'])
+      expect(LeanOutput::Mode.policy('full', depth: 10_000_000)).to eq(LeanOutput::Mode::POLICY['ultra'])
+    end
   end
 end

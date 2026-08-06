@@ -27,13 +27,22 @@ def source(cwd, level)
   ' (default)'
 end
 
+# Replays your own transcripts through the hook. Slow on purpose — it reads
+# every result you have ever seen, which is the only honest way to answer where
+# the bytes are rather than where the compressors happen to point.
+def analyze(root)
+  results = LeanOutput::Corpus.analyze(root: root || LeanOutput::Corpus::DEFAULT_ROOT)
+  puts LeanOutput::Corpus.report(results)
+end
+
 cwd = Dir.pwd
 argument = ARGV.first
 
 case argument
 when nil then report(cwd)
 when '-v', '--version' then puts LeanOutput::VERSION
-when '-h', '--help' then puts "usage: lean [#{LeanOutput::Mode::LEVELS.join('|')}]"
+when '-h', '--help' then puts "usage: lean [#{LeanOutput::Mode::LEVELS.join('|')}|analyze [root]]"
+when 'analyze' then analyze(ARGV[1])
 else
   level = LeanOutput::Mode.write(cwd, argument)
   if level

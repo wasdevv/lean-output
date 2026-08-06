@@ -19,6 +19,7 @@ require_relative 'lean_output/compressors/grep'
 require_relative 'lean_output/compressors/json_rows'
 require_relative 'lean_output/detector'
 require_relative 'lean_output/runner'
+require_relative 'lean_output/corpus'
 
 module LeanOutput
   VERSION = '0.9.0'

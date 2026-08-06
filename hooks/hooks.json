@@ -2,6 +2,15 @@
   "hooks": {
     "PostToolUse": [
       {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ruby ${CLAUDE_PLUGIN_ROOT}/bin/compress"
+          }
+        ]
+      },
+      {
         "matcher": "Bash",
         "hooks": [
           {

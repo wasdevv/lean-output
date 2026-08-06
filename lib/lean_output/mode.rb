@@ -17,7 +17,7 @@ module LeanOutput
   # session. Here it means `full` — the plugin was installed to compress, and
   # silence is consent.
   module Mode
-    LEVELS = %w[off safe full ultra].freeze
+    LEVELS = %w[off safe full ultra volatile].freeze
     DEFAULT = 'full'
 
     # Each level is a floor and two ceilings, not a different algorithm.
@@ -32,18 +32,34 @@ module LeanOutput
     # The 8 points cost ~145 extra rewrites whose average saving is under 200B,
     # which is where the footer starts eating the win — worth it on demand, not
     # by default.
+    # `volatile`'s ceiling, and the one number in this file that buys more than
+    # every compressor put together.
+    #
+    # The distribution is the argument: over 8694 real results, the largest 10%
+    # of calls hold 50.1% of all the bytes, and the largest 1% hold 15.0%. A
+    # compressor works the median result — 1261B — and can only ever win a
+    # fraction of it. A ceiling works the tail, where the bytes actually are.
+    #
+    # 4000B clips 6% of calls for -18.3% of the corpus. 2000B would clip 16%
+    # for -34.5%, and that is the knob to turn if the re-run meter stays flat;
+    # the fidelity cost of a ceiling is not a guess here, it is the one thing
+    # this plugin already measures against its own control.
+    CAP_BYTES = 4_000
+
     POLICY = {
       'off' => nil,
       'safe' => { min_bytes: 400, ratio: 0.85, lossless_only: true },
       'full' => { min_bytes: 400, ratio: 0.70, lossless_ratio: 0.85 },
-      'ultra' => { min_bytes: 200, ratio: 0.85, lossless_ratio: 0.95 }
+      'ultra' => { min_bytes: 200, ratio: 0.85, lossless_ratio: 0.95 },
+      'volatile' => { min_bytes: 200, ratio: 0.85, lossless_ratio: 0.95, cap: CAP_BYTES }
     }.freeze
 
     DESCRIPTION = {
       'off' => 'every result reaches the model untouched.',
       'safe' => 'only rewrites that discard nothing, plus the ledger.',
       'full' => 'compressors and the ledger, at the measured floors.',
-      'ultra' => 'a lower floor and a thinner margin — more rewrites, smaller wins each.'
+      'ultra' => 'a lower floor and a thinner margin — more rewrites, smaller wins each.',
+      'volatile' => "ultra plus a hard #{Text.human(CAP_BYTES)} ceiling on every result — the long tail gets clipped, and says so."
     }.freeze
 
     CONFIG_FILE = 'config.json'
@@ -80,10 +96,16 @@ module LeanOutput
     #
     # No hysteresis, because none is possible: depth is cumulative bytes of tool
     # output, which never decreases, so the step can never oscillate.
+    #
+    # It cannot reach `volatile` on its own: the climb only moves a level
+    # nobody chose, the default is `full`, and one step from `full` is `ultra`.
+    # A hard ceiling throws bytes away by construction, so it stays something
+    # someone asks for.
     def self.deepen(level, depth)
       return level unless depth.to_i >= DEEP_BYTES
 
-      LEVELS[[LEVELS.index(level) + 1, LEVELS.size - 1].min]
+      step = LEVELS[[LEVELS.index(level) + 1, LEVELS.size - 1].min]
+      POLICY[step][:cap] ? level : step
     end
 
     def self.normalize(level)

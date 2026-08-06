@@ -1,6 +1,6 @@
 ---
 description: Show or switch the lean-output compression level for this directory
-argument-hint: "[off|safe|full|ultra]"
+argument-hint: "[off|safe|full|ultra|volatile]"
 allowed-tools: Bash(ruby:*)
 ---
 

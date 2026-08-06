@@ -266,7 +266,10 @@ def lost(original, compressed)
 end
 
 def updated(result)
-  result&.dig("hookSpecificOutput", "updatedToolOutput")
+  # The hook answers in the tool's own output shape — a String for one tool, a
+  # Hash for another, an Array of text blocks for MCP — so the text comes back
+  # out the same way the Runner read it in.
+  LeanOutput::Runner.extract_output(result&.dig("hookSpecificOutput", "updatedToolOutput"))
 end
 
 def with_env(pairs)
@@ -423,7 +426,12 @@ mode_rows = LeanOutput::Mode::LEVELS.map do |level|
       rewrites += 1
       _, missing = lost(original, compressed)
       # Every level keeps every location. A level that saves more by losing one
-      # is not a level, it is a different product.
+      # is not a level, it is a different product — which is exactly what the
+      # ceiling is, so `volatile` is measured here and judged nowhere. It is
+      # exempt because it is honest about it: it clips, it says it clipped, and
+      # nothing reaches it without being asked for by name.
+      next if LeanOutput::Mode::POLICY[level][:cap]
+
       fail!("LOST LOCATIONS at #{level} in #{scenario[:name]}: #{missing.join(", ")}") unless missing.empty?
       if level == "off"
         fail!("MODE off REWROTE #{scenario[:name]}: the kill switch has to be absolute")
@@ -567,6 +575,6 @@ if @failed
   exit 1
 end
 
-puts "\nAll checks passed: zero lost locations at every mode, every scenario yields locations, " \
+puts "\nAll checks passed: zero lost locations at every mode with no ceiling, every scenario yields locations, " \
      "#{LEDGER_SESSIONS.size} ledger sessions reference exactly what they should, " \
      "#{NEGATIVE.size} negative cases left untouched."

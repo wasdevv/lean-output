@@ -17,6 +17,14 @@ module LeanOutput
     # untouched surface the hook sees: measured over local transcripts, 28% of
     # Reads re-read a path already read in the same session.
     DEDUPED = %w[Read Bash].freeze
+    # The trust boundary a ceiling must not cross. Every other rewrite in this
+    # plugin can defend itself as redundancy removal; this one removed content,
+    # and a model that does not know it is reading a fragment will answer as if
+    # it read the whole thing. So the notice is not a footer, it is the feature:
+    # it names the middle as the missing part, and names the two ways to get it.
+    CLIPPED = "\n[lean-output] %s clipped to %s — the middle is gone, the ends are intact. " \
+              'Do not assume you have seen everything: read the file with offset/limit, ' \
+              "or re-run the command narrower, if the part you need was in between.\n"
 
     def self.call(payload)
       return nil unless payload.is_a?(Hash)
@@ -62,16 +70,37 @@ module LeanOutput
         return [reference, true] if reference && reference.bytesize < output.bytesize * policy[:ratio]
       end
 
-      compressed = rewrite(tool, payload, output, policy)
-      return [nil, false] if compressed.nil? || compressed.equal?(output)
-
-      ceiling = ceiling(tool, payload, output, policy)
-      return [nil, false] unless ceiling && compressed.bytesize < output.bytesize * ceiling
-
-      dropped = LeanOutput.discards(output, command: command_for(tool, payload))
-      [compressed + footer(output.bytesize, compressed.bytesize, dropped), false]
+      [clip(compressed(tool, payload, output, policy) || output, output, policy), false]
     end
     private_class_method :decide
+
+    def self.compressed(tool, payload, output, policy)
+      compressed = rewrite(tool, payload, output, policy)
+      return nil if compressed.nil? || compressed.equal?(output)
+
+      ceiling = ceiling(tool, payload, output, policy)
+      return nil unless ceiling && compressed.bytesize < output.bytesize * ceiling
+
+      dropped = LeanOutput.discards(output, command: command_for(tool, payload))
+      compressed + footer(output.bytesize, compressed.bytesize, dropped)
+    end
+    private_class_method :compressed
+
+    # The last rung, and the only one that throws away bytes it cannot argue
+    # were redundant. It runs after the compressors rather than instead of
+    # them, so a result a compressor could fit under the ceiling losslessly is
+    # never clipped for nothing.
+    #
+    # `text` may already be a rewrite, in which case it equals `output` in
+    # neither size nor content — the notice quotes the size the model would
+    # have received, because that is the number it needs to judge whether to
+    # ask again.
+    def self.clip(text, output, policy)
+      clipped = Text.clip(text, policy[:cap]) or return text.equal?(output) ? nil : text
+
+      clipped + format(CLIPPED, Text.human(text.bytesize), Text.human(policy[:cap]))
+    end
+    private_class_method :clip
 
     def self.deduplicable?(tool, output, policy)
       return false unless DEDUPED.include?(tool) || tool.match?(MCP_TOOL)

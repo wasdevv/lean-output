@@ -35,6 +35,8 @@ module LeanOutput
       return Cap.call(payload) if payload['hook_event_name'] == 'PreToolUse'
 
       tool = payload['tool_name'].to_s
+      return nil if vault_read?(tool, payload)
+
       response = payload['tool_response']
       return nil if response.is_a?(Hash) && response['isImage']
 
@@ -122,6 +124,18 @@ module LeanOutput
       clipped + (path ? format(CLIPPED, **sizes, path: path) : format(BLIND, **sizes))
     end
     private_class_method :clip
+
+    # The vault is the escape hatch. A spill hands out a path and promises the
+    # content is still there, so a read of that path has to come back whole —
+    # compressed, the pointer only ever resolves to another pointer and nothing
+    # reaches the content. Bypassing before the ledger also keeps the read out
+    # of the digest history, so it can't dedup against the spill it came from.
+    def self.vault_read?(tool, payload)
+      return false unless %w[Read Grep].include?(tool)
+
+      path = payload.dig('tool_input', 'file_path') || payload.dig('tool_input', 'path')
+      path.to_s.start_with?(Vault.root)
+    end
 
     def self.deduplicable?(tool, output, policy)
       return false unless DEDUPED.include?(tool) || tool.match?(MCP_TOOL)

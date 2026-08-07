@@ -1,7 +1,7 @@
 {
   "name": "lean-output",
   "description": "Cut Claude Code token usage: spills long results to disk and hands back a pointer, withholds results the context already holds, and compresses RSpec, RuboCop, Brakeman, git diff, cargo and grep outputs before they reach the model, keeping every failure, file:line and changed path intact.",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "author": {
     "name": "wasdevv",
     "email": "o.u.f.acrazzy@gmail.com"

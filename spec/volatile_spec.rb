@@ -165,4 +165,42 @@ RSpec.describe 'the volatile level' do
       expect(pointer).not_to include('full text at')
     end
   end
+
+  describe 'reading back what was spilled' do
+    # The pointer promises the content is still there. Compressing the read of a
+    # vault path breaks that promise in the exact case the vault exists for, and
+    # it breaks it twice over: the first read dedups against the spill it came
+    # from, and every read after that dedups against the notice.
+    it 'hands back a vault file whole, however many times it is read' do
+      ENV['LEAN_OUTPUT_MODE'] = 'volatile'
+      content = "marker\n#{'x' * 4_000}"
+      path = File.join(LeanOutput::Vault.root, 'a1b2c3d4', '0001-cat-big.txt')
+
+      2.times do
+        result = LeanOutput::Runner.call(
+          'session_id' => 'vault-readback', 'tool_name' => 'Read',
+          'tool_input' => { 'file_path' => path },
+          'tool_response' => { 'type' => 'text',
+                               'file' => { 'filePath' => path, 'content' => content } }
+        )
+
+        expect(result).to be_nil
+      end
+    end
+
+    it 'still compresses a read of the same size outside the vault' do
+      ENV['LEAN_OUTPUT_MODE'] = 'volatile'
+      content = "marker\n#{'x' * 4_000}"
+
+      result = LeanOutput::Runner.call(
+        'session_id' => 'vault-readback', 'tool_name' => 'Read',
+        'tool_input' => { 'file_path' => '/tmp/not_the_vault.txt' },
+        'tool_response' => { 'type' => 'text',
+                             'file' => { 'filePath' => '/tmp/not_the_vault.txt',
+                                         'content' => content } }
+      )
+
+      expect(result).not_to be_nil
+    end
+  end
 end

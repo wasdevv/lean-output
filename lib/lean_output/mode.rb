@@ -70,10 +70,16 @@ module LeanOutput
     # points and to 3000B gives back 23, so the aggressive end is where the
     # whole difference lives.
     #
-    # Lowering it is where the idea stops paying: what is left below this floor
-    # is 5275 results averaging 258B, and a pointer costs ~200B of path and
-    # notice before the preview. Spilling those would spend more than it saves.
-    SPILL_BYTES = 800
+    # 800B while the pointer cost 463B; the floor was always a function of that
+    # number, and a cheaper pointer is what moved it. With Vault::PREVIEW at
+    # 150B and the path down to ~72B a pointer is ~260B, so at 500B it replaces
+    # a result with something under half its size — the same margin every ratio
+    # in this file already demands of a rewrite.
+    #
+    # Replayed over the corpus, 800 → 500 takes the residual from 2.87MB to
+    # 2.58MB. Going on to 350 buys 0.09MB more and costs 800 extra spills, which
+    # is where a pointer stops being cheaper than the bytes it replaces.
+    SPILL_BYTES = 500
 
     POLICY = {
       'off' => nil,

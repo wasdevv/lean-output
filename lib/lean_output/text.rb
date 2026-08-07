@@ -20,7 +20,19 @@ module LeanOutput
       return nil if cap.nil? || str.bytesize <= cap
 
       back = (cap * tail).to_i
-      "#{utf8(str.byteslice(0, cap - back))}\n…\n#{utf8(str.byteslice(-back, back))}"
+      "#{utf8(str.byteslice(0, cap - back))}\n…\n#{from_line_start(utf8(str.byteslice(-back, back)))}"
+    end
+
+    # The tail is there to carry the verdict, and half of the line above it
+    # carries nothing — ` of something incompressible 31676000` identifies no
+    # result. Dropping the partial line also gives the bytes back.
+    #
+    # Only when the break is in the first half, because otherwise the partial
+    # line *is* the tail: a single-line result (an MCP row set, a minified file)
+    # has no break to align to and would come back empty.
+    def self.from_line_start(text)
+      cut = text.index("\n")
+      cut && cut < text.bytesize / 2 ? text[(cut + 1)..] : text
     end
 
     # Byte-slicing splits multi-byte codepoints; every clip runs through here so

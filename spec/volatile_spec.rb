@@ -72,6 +72,15 @@ RSpec.describe 'the volatile level' do
       expect(pointer).to match(/full text at \S+ \(Read or grep it\)/)
     end
 
+    # The preview's tail is aligned to a line break, which is worth bytes on a
+    # log and would be worth the whole tail on a result that has no break to
+    # align to — an MCP row set, a minified file. Those get the raw slice.
+    it 'still ends a single-line result with its own last bytes' do
+      pointer = bash('psql -c "select …"', "id,name,#{'x' * 4000},END")
+
+      expect(pointer).to include("END\n[lean-output] middle withheld")
+    end
+
     it 'spills a Read the same way it spills a Bash result' do
       ENV['LEAN_OUTPUT_MODE'] = 'volatile'
       result = LeanOutput::Runner.call(

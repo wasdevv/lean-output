@@ -203,4 +203,23 @@ RSpec.describe 'the volatile level' do
       expect(result).not_to be_nil
     end
   end
+
+  describe 'what the ceiling is allowed to cut' do
+    # A ceiling is supposed to work the tail — chained commands and bulk row
+    # sets. Every single-tool verdict in the corpus compresses to 1095B or
+    # under, so none of them should ever meet CAP_BYTES. Lower the ceiling past
+    # that line and it starts dropping failures out of a result someone is
+    # about to read, silently: no other example here would notice.
+    {
+      'bundle exec rspec' => 'rspec_failures.txt',
+      'cargo build' => 'cargo_warnings.txt'
+    }.each do |command, fixture|
+      it "leaves the verdict of `#{command}` whole" do
+        result = bash(command, File.read("spec/fixtures/#{fixture}"))
+
+        expect(result).not_to be_nil
+        expect(result).not_to include('clipped to')
+      end
+    end
+  end
 end

@@ -54,11 +54,19 @@ module LeanOutput
     # compressor works the median result — 1261B — and can only ever win a
     # fraction of it. A ceiling works the tail, where the bytes actually are.
     #
-    # 4000B clips 6% of calls for -18.3% of the corpus. 2000B would clip 16%
-    # for -34.5%, and that is the knob to turn if the re-run meter stays flat;
-    # the fidelity cost of a ceiling is not a guess here, it is the one thing
-    # this plugin already measures against its own control.
-    CAP_BYTES = 4_000
+    # 4000B clipped 6% of calls for -18.3% of the corpus, and left 2000B as the
+    # next step conditional on the re-run meter staying flat. It stayed flat:
+    # over 660 real results, 10.7% of rewrites were followed by a re-run within
+    # three calls against 11.1% of passthroughs — the control is the higher of
+    # the two, so the ceiling was not sending anyone back for what it cut.
+    #
+    # So the knob was turned. What 2000B clips is chained commands and bulk row
+    # sets; every single-tool compressor output in the corpus lands at 1095B or
+    # under, so no rspec, rubocop, brakeman or cargo verdict is truncated by it.
+    # That is the line to hold on the next turn as well: below ~1100B a ceiling
+    # stops working the tail and starts cutting into distilled signal, which is
+    # a different trade than this one and needs its own argument.
+    CAP_BYTES = 2_000
 
     # Where an unclaimed result stops being worth carrying and starts being
     # worth pointing at. Below it the pointer costs more than the bytes it

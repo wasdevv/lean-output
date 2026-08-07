@@ -21,10 +21,14 @@ module LeanOutput
     # plugin can defend itself as redundancy removal; this one removed content,
     # and a model that does not know it is reading a fragment will answer as if
     # it read the whole thing. So the notice is not a footer, it is the feature:
-    # it names the middle as the missing part, and names the two ways to get it.
-    CLIPPED = "\n[lean-output] %s clipped to %s — the middle is gone, the ends are intact. " \
-              'Do not assume you have seen everything: read the file with offset/limit, ' \
-              "or re-run the command narrower, if the part you need was in between.\n"
+    # it names the middle as the missing part, and names the way to get it.
+    CLIPPED = "\n[lean-output] %<from>s clipped to %<to>s — the middle is gone from here, " \
+              "full text at %<path>s (Read or grep it)\n"
+    # Only when the disk refused. Then the middle really is gone, and the notice
+    # has to spend the bytes saying so.
+    BLIND = "\n[lean-output] %<from>s clipped to %<to>s — the middle is gone, the ends are intact. " \
+            'Do not assume you have seen everything: read the file with offset/limit, ' \
+            "or re-run the command narrower, if the part you need was in between.\n"
 
     def self.call(payload)
       return nil unless payload.is_a?(Hash)
@@ -71,15 +75,16 @@ module LeanOutput
       end
 
       claimed = compressed(tool, payload, output, policy)
+      label = Ledger.label(tool, payload)
       # The vault is offered only what no compressor wanted. A compressed
       # result is distilled signal — putting *that* behind a pointer would hide
       # the failures someone is about to read, and the bytes it replaced are
       # already gone anyway. Raw output nobody could claim is the opposite: it
       # is where the size is and where the redundancy is unprovable, so it goes
       # to disk whole instead of being argued with.
-      spilled = Vault.spill(session, Ledger.label(tool, payload), output, policy) if claimed.nil?
+      spilled = Vault.spill(session, label, output, policy) if claimed.nil?
 
-      [clip(spilled || claimed || output, output, policy), false]
+      [clip(session, label, spilled || claimed || output, output, policy), false]
     end
     private_class_method :decide
 
@@ -95,19 +100,27 @@ module LeanOutput
     end
     private_class_method :compressed
 
-    # The last rung, and the only one that throws away bytes it cannot argue
-    # were redundant. It runs after the compressors rather than instead of
-    # them, so a result a compressor could fit under the ceiling losslessly is
-    # never clipped for nothing.
+    # The last rung, and it used to be the only one that could destroy
+    # something. It fires almost exclusively on a compressed result — raw
+    # output this big was spilled two lines up — and the vault had declined
+    # that result precisely *because* a compressor claimed it. So a failing
+    # suite arrived distilled to 8kB of failures, got cut to 4kB, and the
+    # failures past the cut had no path back from anywhere.
+    #
+    # Storing the original here costs one write on a rung that already ran and
+    # buys the ceiling the same promise every other rung makes: what left the
+    # context window is still on disk.
     #
     # `text` may already be a rewrite, in which case it equals `output` in
     # neither size nor content — the notice quotes the size the model would
     # have received, because that is the number it needs to judge whether to
     # ask again.
-    def self.clip(text, output, policy)
+    def self.clip(session, label, text, output, policy)
       clipped = Text.clip(text, policy[:cap]) or return text.equal?(output) ? nil : text
 
-      clipped + format(CLIPPED, Text.human(text.bytesize), Text.human(policy[:cap]))
+      sizes = { from: Text.human(text.bytesize), to: Text.human(policy[:cap]) }
+      path = Vault.store(session, label, output)
+      clipped + (path ? format(CLIPPED, **sizes, path: path) : format(BLIND, **sizes))
     end
     private_class_method :clip
 

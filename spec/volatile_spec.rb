@@ -133,6 +133,29 @@ RSpec.describe 'the volatile level' do
       expect(LeanOutput::Mode::POLICY['volatile'][:cap]).to eq(LeanOutput::Mode::CAP_BYTES)
     end
 
+    # The hole the benchmark found. A 53kB failing suite compresses to 8.5kB of
+    # distilled failures, which the ceiling then cuts to 4kB — and the vault had
+    # declined the raw output two lines earlier, precisely because a compressor
+    # claimed it. Failures past the cut were unrecoverable from anywhere.
+    it 'stores the original of a compressed result it has to cut' do
+      # A real 21-failure run, not the 3-failure fixture repeated: repeats
+      # compress away and never reach the ceiling, which is why this went
+      # unnoticed. It takes a genuinely broad breakage to trigger, and by then
+      # the failures past the cut are exactly what someone came to read.
+      pointer = bash('bundle exec rspec', File.read('spec/fixtures/rspec_broad_failure.txt'))
+
+      expect(pointer).to include('the middle is gone from here')
+      expect(File.read(vault_path(pointer))).to include('705 examples, 21 failures')
+    end
+
+    it 'says so plainly when it had to cut with nowhere to store the original' do
+      ENV['LEAN_OUTPUT_STATE_DIR'] = '/proc/nowhere-the-vault-can-write'
+      pointer = bash('bundle exec rspec', File.read('spec/fixtures/rspec_broad_failure.txt'))
+
+      expect(pointer).to include('re-run the command narrower')
+      expect(pointer).not_to include('full text at')
+    end
+
     # It is the only rung that can lose something, so nothing may arrive at it
     # by accident — a session that merely got long climbs to ultra and stops.
     it 'is never reached by a session that merely got long' do

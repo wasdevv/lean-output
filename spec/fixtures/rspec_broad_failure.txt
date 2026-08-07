@@ -1,0 +1,722 @@
+...........................................................................................................................................................................................................................................................................................................................................................................FFFF...........................................................................................................................................................................................................................................................................................................FFF...FFFFFF..FF...FFFFFF..............
+
+Failures:
+
+  1) Task review flow POST /tasks/:id/merge commits, pushes and opens a PR server-side, redirecting with the URL in the flash
+     Failure/Error: expect(response).to redirect_to(task_path(task))
+
+       Expected response to be a redirect to <http://www.example.com/tasks/1> but was a redirect to <http://www.example.com/tasks/1/diff>.
+       Expected "http://www.example.com/tasks/1" to be === "http://www.example.com/tasks/1/diff".
+     # ./spec/requests/task_review_flow_spec.rb:66:in 'block (3 levels) in <main>'
+
+  2) Task review flow POST /tasks/:id/merge links to the created pull request from the task header
+     Failure/Error: expect(task.reload.pr_url).to eq("https://github.com/wasdevv/fixture/pull/7")
+
+       expected: "https://github.com/wasdevv/fixture/pull/7"
+            got: nil
+
+       (compared using ==)
+     # ./spec/requests/task_review_flow_spec.rb:92:in 'block (3 levels) in <main>'
+
+  3) Task review flow POST /tasks/:id/merge does not need the agent to be running
+     Failure/Error: expect(response).to redirect_to(task_path(task))
+
+       Expected response to be a redirect to <http://www.example.com/tasks/1> but was a redirect to <http://www.example.com/tasks/1/diff>.
+       Expected "http://www.example.com/tasks/1" to be === "http://www.example.com/tasks/1/diff".
+     # ./spec/requests/task_review_flow_spec.rb:105:in 'block (3 levels) in <main>'
+
+  4) Task review flow POST /tasks/:id/merge redirects back with a classified error when gh pr create fails
+     Failure/Error: expect(response.body).to include("GitHub is not authenticated")
+
+       expected "<!DOCTYPE html>\n<html class=\"h-full\">\n  <head>\n    <title>Swarm</title>\n    <meta name=\"viewp.../ul>\n</dialog>\n\n\n    <turbo-frame id=\"preferences_modal\"></turbo-frame>\n  </body>\n</html>\n" to include "GitHub is not authenticated"
+       Diff:
+       @@ -1 +1,502 @@
+       -GitHub is not authenticated
+       +<!DOCTYPE html>
+       +<html class="h-full">
+       +  <head>
+       +    <title>Swarm</title>
+       +    <meta name="viewport" content="width=device-width,initial-scale=1">
+       +    
+       +    
+       +
+       +    
+       +
+       +    <link rel="icon" href="/icon.png" type="image/png">
+       +    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+       +
+       +    <link rel="stylesheet" href="/assets/application-4165fb13.css" data-turbo-track="reload" />
+       +<link rel="stylesheet" href="/assets/rouge-f509f7a8.css" data-turbo-track="reload" />
+       +<link rel="stylesheet" href="/assets/xterm-62cb180a.css" data-turbo-track="reload" />
+       +    <script type="importmap" data-turbo-track="reload">{
+       +  "imports": {
+       +    "application": "/assets/application-ccd7af25.js",
+       +    "@hotwired/turbo-rails": "/assets/turbo.min-9fd88cd5.js",
+       +    "@hotwired/stimulus": "/assets/stimulus.min-4b1e420e.js",
+       +    "@hotwired/stimulus-loading": "/assets/stimulus-loading-1fc53fe7.js",
+       +    "@rails/actioncable": "/assets/@rails--actioncable-89ef9bf6.js",
+       +    "@xterm/addon-fit": "/assets/@xterm--addon-fit-a3ecf7ee.js",
+       +    "@xterm/xterm": "/assets/@xterm--xterm-03a4a7db.js",
+       +    "@xterm/addon-search": "/assets/@xterm--addon-search-be5ddfb8.js",
+       +    "@xterm/addon-web-links": "/assets/@xterm--addon-web-links-e90c7264.js",
+       +    "@codemirror/commands": "/assets/@codemirror--commands-c5c660ba.js",
+       +    "@codemirror/lang-css": "/assets/@codemirror--lang-css-42a0f5c3.js",
+       +    "@codemirror/lang-html": "/assets/@codemirror--lang-html-4429f202.js",
+       +    "@codemirror/lang-javascript": "/assets/@codemirror--lang-javascript-c7bcdd16.js",
+       +    "@codemirror/lang-json": "/assets/@codemirror--lang-json-2821ad36.js",
+       +    "@codemirror/lang-markdown": "/assets/@codemirror--lang-markdown-d95ce064.js",
+       +    "@codemirror/language": "/assets/@codemirror--language-cffecb1c.js",
+       +    "@codemirror/legacy-modes/mode/ruby": "/assets/@codemirror--legacy-modes--mode--ruby-6df3c499.js",
+       +    "@codemirror/legacy-modes/mode/yaml": "/assets/@codemirror--legacy-modes--mode--yaml-bdf80cf8.js",
+       +    "@codemirror/state": "/assets/@codemirror--state-7749b908.js",
+       +    "@codemirror/theme-one-dark": "/assets/@codemirror--theme-one-dark-16acd409.js",
+       +    "@codemirror/view": "/assets/@codemirror--view-d748d07a.js",
+       +    "@codemirror/autocomplete": "/assets/@codemirror--autocomplete-b39445a9.js",
+       +    "@lezer/common": "/assets/@lezer--common-e3b0a767.js",
+       +    "@lezer/css": "/assets/@lezer--css-6160d269.js",
+       +    "@lezer/highlight": "/assets/@lezer--highlight-811b3d56.js",
+       +    "@lezer/html": "/assets/@lezer--html-a5e53d55.js",
+       +    "@lezer/javascript": "/assets/@lezer--javascript-26b577e2.js",
+       +    "@lezer/json": "/assets/@lezer--json-a005d3ad.js",
+       +    "@lezer/lr": "/assets/@lezer--lr-6a3ad9ef.js",
+       +    "@lezer/markdown": "/assets/@lezer--markdown-73a8e62f.js",
+       +    "@marijn/find-cluster-break": "/assets/@marijn--find-cluster-break-e18a1f02.js",
+       +    "crelt": "/assets/crelt-3a32f7ce.js",
+       +    "style-mod": "/assets/style-mod-747b1a97.js",
+       +    "w3c-keyname": "/assets/w3c-keyname-2e59b6bc.js",
+       +    "controllers/application": "/assets/controllers/application-3affb389.js",
+       +    "controllers/autosave_controller": "/assets/controllers/autosave_controller-469f7098.js",
+       +    "controllers/context_menu_controller": "/assets/controllers/context_menu_controller-a9d3dd93.js",
+       +    "controllers/copy_field_controller": "/assets/controllers/copy_field_controller-15e05ca0.js",
+       +    "controllers/design_mode_controller": "/assets/controllers/design_mode_controller-a2088b6a.js",
+       +    "controllers/discord_presence_controller": "/assets/controllers/discord_presence_controller-47473195.js",
+       +    "controllers/drop_zone_controller": "/assets/controllers/drop_zone_controller-b71a50cb.js",
+       +    "controllers/editor_controller": "/assets/controllers/editor_controller-ea47c8c4.js",
+       +    "controllers/explorer_controller": "/assets/controllers/explorer_controller-67c62a5d.js",
+       +    "controllers/hello_controller": "/assets/controllers/hello_controller-708796bd.js",
+       +    "controllers": "/assets/controllers/index-ee64e1f1.js",
+       +    "controllers/notifications_controller": "/assets/controllers/notifications_controller-7bf0a7d7.js",
+       +    "controllers/paste_images_controller": "/assets/controllers/paste_images_controller-5af94ccc.js",
+       +    "controllers/preferences_controller": "/assets/controllers/preferences_controller-b936ec43.js",
+       +    "controllers/quick_open_controller": "/assets/controllers/quick_open_controller-68ea87b3.js",
+       +    "controllers/refresher_controller": "/assets/controllers/refresher_controller-2b4bb9f4.js",
+       +    "controllers/sidebar_controller": "/assets/controllers/sidebar_controller-1839f9ce.js",
+       +    "controllers/sidebar_search_controller": "/assets/controllers/sidebar_search_controller-f0067fa0.js",
+       +    "controllers/split_controller": "/assets/controllers/split_controller-1fc807b3.js",
+       +    "controllers/suggest_controller": "/assets/controllers/suggest_controller-da6ea4e2.js",
+       +    "controllers/task_folders_controller": "/assets/controllers/task_folders_controller-0ba8cded.js",
+       +    "controllers/task_loop_controller": "/assets/controllers/task_loop_controller-8d954375.js",
+       +    "controllers/terminal_controller": "/assets/controllers/terminal_controller-a13239d7.js",
+       +    "controllers/topbar_controller": "/assets/controllers/topbar_controller-8d8d1b8f.js"
+       +  }
+       +}</script>
+       +<link rel="modulepreload" href="/assets/application-ccd7af25.js">
+       +<link rel="modulepreload" href="/assets/turbo.min-9fd88cd5.js">
+       +<link rel="modulepreload" href="/assets/stimulus.min-4b1e420e.js">
+       +<link rel="modulepreload" href="/assets/stimulus-loading-1fc53fe7.js">
+       +<link rel="modulepreload" href="/assets/@rails--actioncable-89ef9bf6.js">
+       +<link rel="modulepreload" href="/assets/@xterm--addon-fit-a3ecf7ee.js">
+       +<link rel="modulepreload" href="/assets/@xterm--xterm-03a4a7db.js">
+       +<link rel="modulepreload" href="/assets/@xterm--addon-search-be5ddfb8.js">
+       +<link rel="modulepreload" href="/assets/@xterm--addon-web-links-e90c7264.js">
+       +<link rel="modulepreload" href="/assets/@codemirror--commands-c5c660ba.js">
+       +<link rel="modulepreload" href="/assets/@codemirror--lang-css-42a0f5c3.js">
+       +<link rel="modulepreload" href="/assets/@codemirror--lang-html-4429f202.js">
+       +<link rel="modulepreload" href="/assets/@codemirror--lang-javascript-c7bcdd16.js">
+       +<link rel="modulepreload" href="/assets/@codemirror--lang-json-2821ad36.js">
+       +<link rel="modulepreload" href="/assets/@codemirror--lang-markdown-d95ce064.js">
+       +<link rel="modulepreload" href="/assets/@codemirror--language-cffecb1c.js">
+       +<link rel="modulepreload" href="/assets/@codemirror--legacy-modes--mode--ruby-6df3c499.js">
+       +<link rel="modulepreload" href="/assets/@codemirror--legacy-modes--mode--yaml-bdf80cf8.js">
+       +<link rel="modulepreload" href="/assets/@codemirror--state-7749b908.js">
+       +<link rel="modulepreload" href="/assets/@codemirror--theme-one-dark-16acd409.js">
+       +<link rel="modulepreload" href="/assets/@codemirror--view-d748d07a.js">
+       +<link rel="modulepreload" href="/assets/@codemirror--autocomplete-b39445a9.js">
+       +<link rel="modulepreload" href="/assets/@lezer--common-e3b0a767.js">
+       +<link rel="modulepreload" href="/assets/@lezer--css-6160d269.js">
+       +<link rel="modulepreload" href="/assets/@lezer--highlight-811b3d56.js">
+       +<link rel="modulepreload" href="/assets/@lezer--html-a5e53d55.js">
+       +<link rel="modulepreload" href="/assets/@lezer--javascript-26b577e2.js">
+       +<link rel="modulepreload" href="/assets/@lezer--json-a005d3ad.js">
+       +<link rel="modulepreload" href="/assets/@lezer--lr-6a3ad9ef.js">
+       +<link rel="modulepreload" href="/assets/@lezer--markdown-73a8e62f.js">
+       +<link rel="modulepreload" href="/assets/@marijn--find-cluster-break-e18a1f02.js">
+       +<link rel="modulepreload" href="/assets/crelt-3a32f7ce.js">
+       +<link rel="modulepreload" href="/assets/style-mod-747b1a97.js">
+       +<link rel="modulepreload" href="/assets/w3c-keyname-2e59b6bc.js">
+       +<link rel="modulepreload" href="/assets/controllers/application-3affb389.js">
+       +<link rel="modulepreload" href="/assets/controllers/autosave_controller-469f7098.js">
+       +<link rel="modulepreload" href="/assets/controllers/context_menu_controller-a9d3dd93.js">
+       +<link rel="modulepreload" href="/assets/controllers/copy_field_controller-15e05ca0.js">
+       +<link rel="modulepreload" href="/assets/controllers/design_mode_controller-a2088b6a.js">
+       +<link rel="modulepreload" href="/assets/controllers/discord_presence_controller-47473195.js">
+       +<link rel="modulepreload" href="/assets/controllers/drop_zone_controller-b71a50cb.js">
+       +<link rel="modulepreload" href="/assets/controllers/editor_controller-ea47c8c4.js">
+       +<link rel="modulepreload" href="/assets/controllers/explorer_controller-67c62a5d.js">
+       +<link rel="modulepreload" href="/assets/controllers/hello_controller-708796bd.js">
+       +<link rel="modulepreload" href="/assets/controllers/index-ee64e1f1.js">
+       +<link rel="modulepreload" href="/assets/controllers/notifications_controller-7bf0a7d7.js">
+       +<link rel="modulepreload" href="/assets/controllers/paste_images_controller-5af94ccc.js">
+       +<link rel="modulepreload" href="/assets/controllers/preferences_controller-b936ec43.js">
+       +<link rel="modulepreload" href="/assets/controllers/quick_open_controller-68ea87b3.js">
+       +<link rel="modulepreload" href="/assets/controllers/refresher_controller-2b4bb9f4.js">
+       +<link rel="modulepreload" href="/assets/controllers/sidebar_controller-1839f9ce.js">
+       +<link rel="modulepreload" href="/assets/controllers/sidebar_search_controller-f0067fa0.js">
+       +<link rel="modulepreload" href="/assets/controllers/split_controller-1fc807b3.js">
+       +<link rel="modulepreload" href="/assets/controllers/suggest_controller-da6ea4e2.js">
+       +<link rel="modulepreload" href="/assets/controllers/task_folders_controller-0ba8cded.js">
+       +<link rel="modulepreload" href="/assets/controllers/task_loop_controller-8d954375.js">
+       +<link rel="modulepreload" href="/assets/controllers/terminal_controller-a13239d7.js">
+       +<link rel="modulepreload" href="/assets/controllers/topbar_controller-8d8d1b8f.js">
+       +<script type="module">import "application"</script>
+       +  </head>
+       +
+       +  <body class="h-full bg-zinc-950 text-zinc-100 antialiased" data-controller="notifications discord-presence"
+       +        data-notifications-title-prefix-value="Swarm"
+       +        data-notifications-dismiss-after-value="8000"
+       +        data-notifications-body-label-value="%{name} terminou"
+       +        data-confirm-label="Confirmar"
+       +        data-cancel-label="Cancelar">
+       +    <turbo-cable-stream-source channel="Turbo::StreamsChannel" signed-stream-name="InRvYXN0cyI=--8fd7213ae3c6eb24b5f80f4e212b77ce060632347b8f330739c0cde5749d49d9"></turbo-cable-stream-source>
+       +    <turbo-cable-stream-source channel="Turbo::StreamsChannel" signed-stream-name="InByZXNlbmNlIg==--c578190085bd4c1d6cf76c0f2f76bb7dde4f225f7da8dbe786d7b352cfbf3d9b"></turbo-cable-stream-source>
+       +    <span id="presence_pinger" data-at="0" data-discord-presence-target="pinger"></span>
+       +
+       +    <div class="flex h-full">
+       +      <aside data-controller="sidebar"
+       +       data-sidebar-collapse-title-value="Recolher barra lateral"
+       +       data-sidebar-expand-title-value="Expandir barra lateral"
+       +       class="relative flex w-64 shrink-0 flex-col overflow-hidden border-r border-zinc-800 bg-[#0e0e11]">
+       +  <turbo-cable-stream-source channel="Turbo::StreamsChannel" signed-stream-name="InRhc2tzIg==--feb9a7c09e2613c77dfd31885a1409895acbff5d29425fb7babfbaddc2accb87"></turbo-cable-stream-source>
+       +
+       +  <div class="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-zinc-800 pl-4 pr-2">
+       +    <a data-sidebar-target="content" class="flex min-w-0 items-center gap-1.5 font-mono text-base font-bold tracking-tight" href="/">
+       +      <span class="inline-block h-2 w-2 rounded-full bg-emerald-400"></span><span>swarm</span>
+       +</a>    <details class="relative shrink-0" data-sidebar-target="content">
+       +      <summary class="cursor-pointer list-none rounded px-2 py-0.5 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 [&::-webkit-details-marker]:hidden">Arquivo</summary>
+       +      <div class="fixed z-50 mt-1 w-44 rounded-md border border-zinc-700 bg-zinc-900 py-1 shadow-2xl">
+       +        <button type="button" data-controller="autosave" data-action="autosave#toggle"
+       +                class="flex w-full cursor-pointer items-center gap-2 whitespace-nowrap px-3 py-1.5 text-left text-xs hover:bg-zinc-800">
+       +          <span data-autosave-target="check" class="w-3 shrink-0"></span><span>Salvamento automático</span>
+       +        </button>
+       +        <a data-turbo-frame="preferences_modal" class="flex w-full cursor-pointer items-center gap-2 whitespace-nowrap px-3 py-1.5 text-left text-xs hover:bg-zinc-800" href="/settings">
+       +          <span class="w-3 shrink-0"></span><span>Preferences…</span>
+       +</a>        <div class="my-1 border-t border-zinc-800"></div>
+       +          <form class="button_to" method="post" action="/locale?locale=en"><input type="hidden" name="_method" value="patch" /><button class="flex w-full cursor-pointer items-center gap-2 whitespace-nowrap px-3 py-1.5 text-left text-xs hover:bg-zinc-800" type="submit">
+       +            <span class="w-3 shrink-0"></span><span>English</span>
+       +</button></form>          <form class="button_to" method="post" action="/locale?locale=pt-BR"><input type="hidden" name="_method" value="patch" /><button class="flex w-full cursor-pointer items-center gap-2 whitespace-nowrap px-3 py-1.5 text-left text-xs hover:bg-zinc-800" type="submit">
+       +            <span class="w-3 shrink-0">✓</span><span>Português</span>
+       +</button></form>      </div>
+       +    </details>
+       +    <button type="button" data-sidebar-target="toggle" data-action="sidebar#toggle" title="Recolher barra lateral"
+       +            class="shrink-0 cursor-pointer rounded px-1.5 py-0.5 font-mono text-sm text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100">«</button>
+       +  </div>
+       +
+       +  <div data-sidebar-target="content" data-controller="sidebar-search" class="flex min-h-0 flex-1 flex-col">
+       +    <div class="px-3 pt-3">
+       +      <input type="search" placeholder="Buscar" autocomplete="off"
+       +             data-sidebar-search-target="input" data-action="input->sidebar-search#filter"
+       +             class="w-full rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:border-emerald-600 focus:outline-none">
+       +    </div>
+       +
+       +    <div class="flex items-center justify-between px-3 pt-2">
+       +      <p class="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Tasks</p>
+       +      <div class="flex items-center gap-3">
+       +        <a data-turbo-frame="_top" class="text-[10px] font-semibold uppercase tracking-widest text-zinc-600 hover:text-emerald-400" href="/imports">Importar chat</a>
+       +        <a data-turbo-frame="_top" class="text-[10px] font-semibold uppercase tracking-widest text-zinc-600 hover:text-emerald-400" href="/history">Histórico</a>
+       +      </div>
+       +    </div>
+       +    <div data-sidebar-search-target="list" class="flex min-h-0 flex-col overflow-y-auto max-h-[45%] shrink-0">
+       +      <nav id="sidebar_nav" class="space-y-5 px-2 py-3">
+       +
+       +    <div data-controller="task-folders"
+       +         data-task-folders-project-id-value="1"
+       +         data-task-folders-create-url-value="/projects/1/task_folders"
+       +         data-task-folders-folder-url-template-value="/task_folders/0"
+       +         data-task-folders-name-placeholder-value="nome da pasta"
+       +         data-task-folders-no-folders-label-value="nenhuma pasta ainda"
+       +         data-task-folders-rename-label-value="Renomear…"
+       +         data-task-folders-delete-label-value="Apagar"
+       +         data-task-folders-delete-confirm-label-value="Clique de novo para apagar"
+       +         data-task-folders-action-failed-label-value="Ação falhou"
+       +         data-filter-group="project 335">
+       +      <div class="mb-1.5 flex items-start justify-between gap-2 px-2">
+       +        <a class="group min-w-0" href="/projects/1">
+       +          <p class="truncate text-xs font-semibold uppercase tracking-wide text-zinc-400 group-hover:text-zinc-100">Project 335</p>
+       +          <p class="truncate font-mono text-[10px] text-zinc-600">main</p>
+       +</a>        <details class="relative shrink-0" data-task-folders-target="newMenu"
+       +                 data-action="toggle->task-folders#positionNewMenu">
+       +          <summary title="Nova task ou pasta"
+       +                   class="cursor-pointer list-none rounded px-1.5 font-mono text-sm text-zinc-500 hover:bg-zinc-800 hover:text-emerald-400 [&::-webkit-details-marker]:hidden">+</summary>
+       +          <div data-task-folders-target="newMenuDropdown"
+       +               class="fixed z-50 w-44 rounded-md border border-zinc-700 bg-zinc-900 py-1 shadow-2xl">
+       +            <a data-turbo-frame="_top" class="block px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-800" href="/projects/1/tasks/new">
+       +              Nova task
+       +</a>            <button type="button" data-action="task-folders#promptNew"
+       +                    class="block w-full cursor-pointer px-3 py-1.5 text-left text-xs text-zinc-200 hover:bg-zinc-800">
+       +              Nova pasta
+       +            </button>
+       +          </div>
+       +        </details>
+       +      </div>
+       +
+       +        <p class="mb-1 flex items-center gap-1.5 px-2 text-[11px] text-emerald-400">
+       +          <span class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400"></span>
+       +          1 agente rodando
+       +        </p>
+       +
+       +      <form data-task-folders-target="createForm" data-action="submit->task-folders#submitCreate"
+       +            class="mb-1 hidden px-2">
+       +        <input type="text" data-task-folders-target="createInput"
+       +               data-action="keydown.esc->task-folders#cancelCreate"
+       +               class="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-100 focus:border-emerald-500 focus:outline-none">
+       +      </form>
+       +
+       +
+       +        <ul data-task-folders-target="rootZone"
+       +            data-action="dragover->task-folders#dragOverRoot dragleave->task-folders#dragLeave drop->task-folders#dropOnRoot"
+       +            class=" space-y-0.5 rounded">
+       +            <li id="sidebar_item_task_1" data-filter-name="fix bug running swarm/fix-bug"
+       +    data-task-folders-target="task"
+       +    data-task-id="1"
+       +    data-task-name="Fix bug"
+       +    data-task-folder-id=""
+       +    draggable="true"
+       +    data-action="contextmenu->task-folders#openTaskMenu dragstart->task-folders#taskDragStart dragend->task-folders#taskDragEnd">
+       +  <a draggable="false" class="block rounded-md px-2 py-1.5 hover:bg-zinc-800/70" href="/tasks/1">
+       +    <span class="flex items-center gap-2">
+       +      <span class="h-2 w-2 shrink-0 rounded-full animate-pulse bg-emerald-400"></span>
+       +      <span class="truncate text-sm text-zinc-300">Fix bug</span>
+       +    </span>
+       +    <span class="mt-0.5 block truncate pl-4 font-mono text-[10px] text-zinc-600">
+       +      rodando · há menos de um minuto
+       +    </span>
+       +</a></li>
+       +
+       +          <li data-task-folders-target="rootDropHint"
+       +              class="hidden rounded border border-dashed border-emerald-600/60 px-2 py-2 text-center text-[11px] italic text-emerald-400">solte aqui pra tirar da pasta</li>
+       +        </ul>
+       +
+       +      <div data-task-folders-target="taskMenu" class="hidden fixed z-50 w-52 rounded-md border border-zinc-700 bg-zinc-900 py-1 text-xs shadow-2xl">
+       +        <p data-task-folders-target="taskMenuLabel" class="truncate border-b border-zinc-800 px-3 py-1.5 font-semibold text-zinc-300"></p>
+       +        <p class="px-3 pt-1.5 text-[10px] uppercase tracking-wider text-zinc-500">Mover para</p>
+       +        <button type="button" data-action="task-folders#moveTaskToRoot" data-task-folders-target="taskMenuRoot"
+       +                class="block w-full cursor-pointer px-3 py-1.5 text-left hover:bg-zinc-800">Sem pasta</button>
+       +        <div data-task-folders-target="taskMenuFolderList" class="max-h-48 overflow-y-auto"></div>
+       +      </div>
+       +
+       +      <div data-task-folders-target="folderMenu" class="hidden fixed z-50 w-44 rounded-md border border-zinc-700 bg-zinc-900 py-1 text-xs shadow-2xl">
+       +        <p data-task-folders-target="folderMenuLabel" class="truncate border-b border-zinc-800 px-3 py-1.5 font-semibold text-zinc-300"></p>
+       +        <button type="button" data-action="task-folders#promptRename" data-task-folders-target="folderMenuAction"
+       +                class="block w-full cursor-pointer px-3 py-1.5 text-left hover:bg-zinc-800"></button>
+       +        <button type="button" data-action="task-folders#deleteFolder" data-task-folders-target="folderMenuDelete"
+       +                class="block w-full cursor-pointer px-3 py-1.5 text-left text-red-400 hover:bg-zinc-800"></button>
+       +        <form data-task-folders-target="renameForm" data-action="submit->task-folders#submitRename" class="hidden px-2 pb-2">
+       +          <input type="text" data-task-folders-target="renameInput"
+       +                 data-action="keydown.esc->task-folders#cancelRename"
+       +                 class="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-100 focus:border-emerald-500 focus:outline-none">
+       +        </form>
+       +      </div>
+       +    </div>
+       +</nav>
+       +
+       +    </div>
+       +
+       +      <section id="explorer_task_1" data-turbo-permanent
+       +         data-controller="explorer drop-zone context-menu"
+       +         data-drop-zone-upload-url-value="/tasks/1/uploads"
+       +         data-drop-zone-root-tree-url-value="/tasks/1/tree?dir="
+       +         data-context-menu-entry-url-value="/tasks/1/entry"
+       +         data-context-menu-root-tree-url-value="/tasks/1/tree?dir="
+       +         data-context-menu-delete-label-value="Apagar"
+       +         data-context-menu-confirm-delete-label-value="Clique de novo para apagar"
+       +         data-context-menu-action-failed-label-value="Ação falhou"
+       +         data-context-menu-repo-root-label-value="raiz do repo"
+       +         data-context-menu-new-file-in-label-value="novo arquivo em %{dir}/"
+       +         data-context-menu-rename-to-label-value="renomear para"
+       +         data-action="dragover->drop-zone#dragover dragleave->drop-zone#dragleave drop->drop-zone#drop contextmenu->context-menu#open"
+       +         class="flex min-h-0 flex-1 flex-col border-t border-zinc-800">
+       +  <div class="flex items-baseline justify-between gap-2 px-3 pb-1 pt-2">
+       +    <span class="shrink-0 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Explorador</span>
+       +    <span class="truncate font-mono text-[10px] text-zinc-600">fix-bug</span>
+       +  </div>
+       +  <div data-drop-dir="" class="min-h-0 flex-1 overflow-y-auto px-1 pb-2">
+       +    <ul class="space-y-px font-mono text-[13px]">
+       +
+       +    <li>
+       +      <a data-turbo-frame="file_viewer" data-turbo-action="advance" data-action="click-&gt;explorer#select" data-entry-path="README.md" data-entry-name="README.md" data-entry-dir="" class="flex items-center gap-1 truncate rounded px-2 py-0.5 pl-6 text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-100 aria-[current=page]:bg-zinc-800 aria-[current=page]:text-emerald-400" href="/tasks/1/files?path=README.md">
+       +        <span class="truncate">README.md</span>
+       +</a>    </li>
+       +    <li>
+       +      <a data-turbo-frame="file_viewer" data-turbo-action="advance" data-action="click-&gt;explorer#select" data-entry-path="feature.rb" data-entry-name="feature.rb" data-entry-dir="" class="flex items-center gap-1 truncate rounded px-2 py-0.5 pl-6 text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-100 aria-[current=page]:bg-zinc-800 aria-[current=page]:text-emerald-400" href="/tasks/1/files?path=feature.rb">
+       +        <span class="truncate">feature.rb</span>
+       +</a>    </li>
+       +
+       +</ul>
+       +
+       +  </div>
+       +
+       +  <div data-context-menu-target="menu"
+       +       class="fixed z-50 hidden w-52 rounded-md border border-zinc-700 bg-zinc-900 py-1 font-sans text-[13px] text-zinc-200 shadow-2xl">
+       +    <p data-context-menu-target="label" class="truncate border-b border-zinc-800 px-3 py-1 font-mono text-[10px] text-zinc-500"></p>
+       +
+       +    <div data-context-menu-target="actions">
+       +      <button type="button" data-action="context-menu#newFile" class="block w-full cursor-pointer px-3 py-1.5 text-left hover:bg-zinc-800">Novo arquivo…</button>
+       +      <button type="button" data-context-menu-target="entryOnly" data-action="context-menu#rename" class="block w-full cursor-pointer px-3 py-1.5 text-left hover:bg-zinc-800">Renomear…</button>
+       +      <button type="button" data-context-menu-target="entryOnly" data-action="context-menu#remove" class="block w-full cursor-pointer px-3 py-1.5 text-left text-red-400 hover:bg-red-950/60">Apagar</button>
+       +    </div>
+       +
+       +    <form data-context-menu-target="form" data-action="submit->context-menu#submitForm" class="hidden px-2 py-1.5">
+       +      <input type="text" autocomplete="off" data-context-menu-target="input" data-action="keydown.esc->context-menu#close"
+       +             class="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-xs text-zinc-100 focus:border-emerald-600 focus:outline-none">
+       +      <p class="mt-1 text-[10px] text-zinc-600">Enter para confirmar · Esc para cancelar</p>
+       +    </form>
+       +  </div>
+       +</section>
+       +
+       +
+       +    <div class="border-t border-zinc-800 p-3">
+       +      <a class="block truncate rounded-md border border-zinc-700 px-3 py-1.5 text-center text-sm text-zinc-300 hover:border-emerald-600 hover:text-emerald-400" href="/projects/new">+ Novo projeto</a>
+       +    </div>
+       +  </div>
+       +
+       +  <div data-action="mousedown->sidebar#startResize dblclick->sidebar#resetWidth"
+       +       title="Arraste para redimensionar · duplo clique para restaurar"
+       +       class="absolute inset-y-0 right-0 z-10 w-1.5 cursor-col-resize hover:bg-emerald-600/50"></div>
+       +</aside>
+       +
+       +
+       +      <div class="flex min-w-0 flex-1 flex-col">
+       +        <header data-controller="topbar" data-action="contextmenu->topbar#menu"
+       +        data-topbar-rename-failed-label-value="Falha ao renomear"
+       +        class="flex h-11 shrink-0 items-stretch border-b border-zinc-800 bg-[#0e0e11]">
+       +  <a title="Painel" data-topbar-target="tab" class="flex shrink-0 items-center border-r border-zinc-800 px-3 text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200 aria-[current=page]:bg-zinc-950 aria-[current=page]:text-emerald-400" href="/">
+       +    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+       +      <path d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10"/>
+       +    </svg>
+       +</a>
+       +  <div id="topbar_tabs" class="flex min-w-0 flex-1 items-stretch overflow-x-auto">
+       +    <a data-topbar-target="tab" data-topbar-task-id="1" data-action="auxclick-&gt;topbar#middleClose" title="Project 335 · Fix bug" class="group flex max-w-48 shrink-0 items-center gap-2 border-r border-zinc-800 px-3 font-mono text-[12px] text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200 aria-[current=page]:bg-zinc-950 aria-[current=page]:text-zinc-100 aria-[current=page]:shadow-[inset_0_2px_0_#10b981]" href="/tasks/1">
+       +      <span class="h-1.5 w-1.5 shrink-0 rounded-full animate-pulse bg-emerald-400"></span>
+       +      <span class="truncate">Fix bug</span>
+       +      <span data-action="click->topbar#close" title="Fechar aba" role="button"
+       +            class="-mr-1 rounded px-1 text-zinc-600 opacity-0 transition-opacity hover:bg-zinc-700 hover:text-zinc-100 group-hover:opacity-100 group-aria-[current=page]:opacity-100">×</span>
+       +</a></div>
+       +
+       +
+       +  <div data-topbar-target="menu"
+       +       class="fixed z-50 hidden w-52 rounded-md border border-zinc-700 bg-zinc-900 py-1 font-sans text-[13px] text-zinc-200 shadow-2xl">
+       +    <p data-topbar-target="label" class="truncate border-b border-zinc-800 px-3 py-1 font-mono text-[10px] text-zinc-500"></p>
+       +
+       +    <div data-topbar-target="menuActions">
+       +      <button type="button" data-action="topbar#closeFromMenu" class="block w-full cursor-pointer px-3 py-1.5 text-left hover:bg-zinc-800">Fechar</button>
+       +      <button type="button" data-action="topbar#closeOthers" class="block w-full cursor-pointer px-3 py-1.5 text-left hover:bg-zinc-800">Fechar outras</button>
+       +      <button type="button" data-action="topbar#renameForm" class="block w-full cursor-pointer px-3 py-1.5 text-left hover:bg-zinc-800">Renomear…</button>
+       +    </div>
+       +
+       +    <form data-topbar-target="form" data-action="submit->topbar#submitRename" class="hidden px-2 py-1.5">
+       +      <input type="text" autocomplete="off" data-topbar-target="input" data-action="keydown.esc->topbar#closeMenu"
+       +             class="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-xs text-zinc-100 focus:border-emerald-600 focus:outline-none">
+       +      <p class="mt-1 text-[10px] text-zinc-600">Enter para confirmar · Esc para cancelar</p>
+       +    </form>
+       +  </div>
+       +</header>
+       +
+       +
+       +          <div class="border-b border-zinc-800 bg-zinc-900 px-6 py-2 text-sm text-red-400">
+       +            Não foi possível abrir o PR — /home/was/.rbenv/versions/4.0.5/lib/ruby/gems/4.0.0/gems/json-2.20.0/lib/json/common.rb:445:in &#39;JSON::Ext::Generator::State.generate&#39;: &quot;\xC3&quot; on US-ASCII (JSON::GeneratorError)
+       +Invalid object: &quot;Resumo escrito pelo agente.\n\n## Evid\xC3\xAAncia visual\n\n_Sem grava\xC3\xA7\xC3\xA3o: o projeto n\xC3\xA3o tem preview command configurado._\n\n\xF0\x9F\xA4\x96 Generated with Claude Code&quot;
+       +	from /home/was/.rbenv/versions/4.0.5/lib/ruby/gems/4.0.0/gems/json-2.20.0/lib/json/common.rb:445:in &#39;JSON.generate&#39;
+       +	from /home/was/.swarm/worktrees/swarm-v1-3/hub-to-spoke-with-ponytail/spec/support/bin/fake_gh:13:in &#39;block in &lt;main&gt;&#39;
+       +	from /home/was/.swarm/worktrees/swarm-v1-3/hub-to-spoke-with-ponytail/spec/support/bin/fake_gh:12:in &#39;IO.open&#39;
+       +	from /home/was/.swarm/worktrees/swarm-v1-3/hub-to-spoke-with-ponytail/spec/support/bin/fake_gh:12:in &#39;&lt;main&gt;&#39;
+       +/home/was/.rbenv/versions/4.0.5/lib/ruby/gems/4.0.0/gems/json-2.20.0/lib/json/common.rb:445:in &#39;String#encode&#39;: &quot;\xC3&quot; on US-ASCII (Encoding::InvalidByteSequenceError)
+       +	from /home/was/.rbenv/versions/4.0.5/lib/ruby/gems/4.0.0/gems/json-2.20.0/lib/json/common.rb:445:in &#39;JSON::Ext::Generator::State.generate&#39;
+       +	from /home/was/.rbenv/versions/4.0.5/lib/ruby/gems/4.0.0/gems/json-2.20.0/lib/json/common.rb:445:in &#39;JSON.generate&#39;
+       +	from /home/was/.swarm/worktrees/swarm-v1-3/hub-to-spoke-with-ponytail/spec/support/bin/fake_gh:13:in &#39;block in &lt;main&gt;&#39;
+       +	from /home/was/.swarm/worktrees/swarm-v1-3/hub-to-spoke-with-ponytail/spec/support/bin/fake_gh:12:in &#39;IO.open&#39;
+       +	from /home/was/.swarm/worktrees/swarm-v1-3/hub-to-spoke-with-ponytail/spec/support/bin/fake_gh:12:in &#39;&lt;main&gt;&#39;
+       +          </div>
+       +
+       +        <main class="min-h-0 flex-1 overflow-y-auto">
+       +          <div class="flex h-full flex-col">
+       +  <div class="flex items-center justify-between gap-4 border-b border-zinc-800 bg-zinc-950 px-4 py-2">
+       +  <div class="min-w-0">
+       +    <div class="flex items-baseline gap-2">
+       +      <h1 class="truncate text-sm font-semibold">Fix bug</h1>
+       +      <span class="shrink-0 rounded-full border px-2 py-0.5 font-mono text-[11px] border-emerald-700 text-emerald-400">rodando</span>
+       +    </div>
+       +    <p class="truncate font-mono text-[11px] text-zinc-500">
+       +      <a class="hover:text-emerald-400" href="/projects/1">Project 335</a> · swarm/fix-bug
+       +    </p>
+       +    <div id="check_summary_task_1" class="inline-flex items-center gap-2">
+       +</div>
+       +
+       +  </div>
+       +
+       +  <div class="flex shrink-0 items-center gap-2">
+       +
+       +    <nav class="flex gap-0.5 rounded-md border border-zinc-800 p-0.5 text-xs">
+       +      <a class="rounded px-2.5 py-1 text-zinc-400 hover:text-zinc-100" href="/tasks/1">Terminal</a>
+       +      <a class="rounded px-2.5 py-1 bg-zinc-800 text-zinc-100" href="/tasks/1/diff">Diff</a>
+       +      <a class="rounded px-2.5 py-1 text-zinc-400 hover:text-zinc-100" href="/tasks/1/files">Arquivos</a>
+       +    </nav>
+       +
+       +      <span class="h-4 w-px bg-zinc-800"></span>
+       +
+       +
+       +
+       +
+       +
+       +
+       +      <span class="h-4 w-px bg-zinc-800"></span>
+       +      <form class="button_to" method="post" action="/tasks/1/merge"><button data-turbo-confirm="Commitar mudanças pendentes, empurrar swarm/fix-bug e abrir pull request contra main?" class="cursor-pointer rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500" type="submit">Criar PR</button></form>
+       +      <form class="button_to" method="post" action="/tasks/1/discard"><button data-turbo-confirm="Descartar esta task? A worktree e a branch swarm/fix-bug serão apagadas permanentemente." class="cursor-pointer rounded-md border border-red-900 px-2.5 py-1 text-xs text-red-400 hover:bg-red-950" type="submit">Descartar</button></form>
+       +  </div>
+       +</div>
+       +
+       +
+       +  <div class="min-h-0 flex-1 overflow-y-auto p-4">
+       +    <div class="mx-auto max-w-5xl">
+       +      <turbo-frame data-controller="refresher" data-refresher-url-value="/tasks/1/diff" id="diff_content">
+       +
+       +
+       +
+       +    <div class="mb-6 overflow-hidden rounded-lg border border-zinc-800">
+       +      <div class="flex items-center justify-between border-b border-zinc-800 bg-zinc-900 px-4 py-2">
+       +        <span class="font-mono text-sm text-zinc-200">feature.rb</span>
+       +        <span class="text-xs text-zinc-500">
+       +          adicionado
+       +        </span>
+       +      </div>
+       +
+       +        <table class="w-full border-collapse font-mono text-xs leading-5">
+       +            <tr><td colspan="3" class="bg-zinc-900 px-4 py-1 text-zinc-500">@@ -0,0 +1 @@</td></tr>
+       +              <tr class="bg-emerald-950/60 text-emerald-300">
+       +                <td class="w-10 select-none px-2 text-right text-zinc-600"></td>
+       +                <td class="w-10 select-none px-2 text-right text-zinc-600">1</td>
+       +                <td class="whitespace-pre-wrap px-2">+# feature</td>
+       +              </tr>
+       +        </table>
+       +
+       +      <div class="border-t border-zinc-800 bg-zinc-900/60 px-4 py-3">
+       +
+       +        <form class="flex items-start gap-2" action="/tasks/1/diff_comments" accept-charset="UTF-8" method="post">
+       +          <input value="feature.rb" type="hidden" name="diff_comment[file_path]" id="diff_comment_file_path" />
+       +          <input placeholder="linha" min="1" max="1" class="w-20 rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs focus:border-emerald-500 focus:outline-none" type="number" name="diff_comment[line_number]" id="diff_comment_line_number" />
+       +          <input placeholder="Deixe feedback de review em feature.rb…" class="flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-sm focus:border-emerald-500 focus:outline-none" type="text" name="diff_comment[body]" id="diff_comment_body" />
+       +          <input type="submit" name="commit" value="Comentar" class="cursor-pointer rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800" data-disable-with="Comentar" />
+       +</form>      </div>
+       +    </div>
+       +</turbo-frame>
+       +    </div>
+       +  </div>
+       +</div>
+       +
+       +        </main>
+       +      </div>
+       +    </div>
+       +
+       +    <div id="toasts" class="pointer-events-none fixed bottom-4 right-4 z-50 flex w-72 flex-col gap-2"></div>
+       +
+       +      <dialog data-controller="quick-open"
+       +        data-quick-open-index-url-value="/tasks/1/file_paths.json"
+       +        data-quick-open-file-url-template-value="/tasks/1/files?path=__PATH__"
+       +        data-action="click->quick-open#backdropClose"
+       +        class="mx-auto mt-24 w-full max-w-xl rounded-lg border border-zinc-700 bg-zinc-900 p-0 text-zinc-100 shadow-2xl backdrop:bg-black/60">
+       +  <input type="text" placeholder="Ir para arquivo…" autocomplete="off"
+       +         data-quick-open-target="input"
+       +         data-action="input->quick-open#filter keydown->quick-open#navigate"
+       +         class="w-full border-b border-zinc-800 bg-transparent px-4 py-3 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none">
+       +  <ul data-quick-open-target="results" class="max-h-80 overflow-y-auto p-1"></ul>
+       +</dialog>
+       +
+       +
+       +    <turbo-frame id="preferences_modal"></turbo-frame>
+       +  </body>
+       +</html>
+     # ./spec/requests/task_review_flow_spec.rb:119:in 'block (3 levels) in <main>'
+
+  5) Worktrees::PullRequest creates the pull request with an explicit repo, base and head
+     Failure/Error: expect(result).to be_success
+       expected `#<struct Worktrees::PullRequest::Result url=nil, number=nil, code=:unknown, error="/home/was/.rbenv/v...rees/swarm-v1-3/hub-to-spoke-with-ponytail/spec/support/bin/fake_gh:12:in '<main>'", existing=false>.success?` to be truthy, got false
+     # ./spec/services/worktrees_pull_request_spec.rb:33:in 'block (2 levels) in <main>'
+     # ./spec/services/worktrees_pull_request_spec.rb:6:in 'block (2 levels) in <main>'
+
+  6) Worktrees::PullRequest passes the body as a file rather than an inline argument
+     Failure/Error: expect(call["args"]).to include("--body-file")
+
+     NoMethodError:
+       undefined method '[]' for nil
+     # ./spec/services/worktrees_pull_request_spec.rb:47:in 'block (2 levels) in <main>'
+     # ./spec/services/worktrees_pull_request_spec.rb:6:in 'block (2 levels) in <main>'
+
+  7) Worktrees::PullRequest persists the pull request number and url on the task
+     Failure/Error: expect(result.number).to eq(42)
+
+       expected: 42
+            got: nil
+
+       (compared using ==)
+     # ./spec/services/worktrees_pull_request_spec.rb:188:in 'block (2 levels) in <main>'
+     # ./spec/services/worktrees_pull_request_spec.rb:6:in 'block (2 levels) in <main>'
+
+  8) Worktrees::PullRequest explains which GitHub account gh is acting as when the repo cannot be resolved
+     Failure/Error: expect(result.code).to eq(:not_found)
+
+       expected: :not_found
+            got: :unknown
+
+       (compared using ==)
+
+       Diff:
+       @@ -1 +1 @@
+       -:not_found
+       +:unknown
+     # ./spec/services/worktrees_pull_request_spec.rb:232:in 'block (2 levels) in <main>'
+     # ./spec/services/worktrees_pull_request_spec.rb:6:in 'block (2 levels) in <main>'
+
+  9) Worktrees::PullRequest recovers the existing pull request when gh reports one already exists
+     Failure/Error: expect(result).to be_success
+       expected `#<struct Worktrees::PullRequest::Result url=nil, number=nil, code=:unknown, error="/home/was/.rbenv/v...rees/swarm-v1-3/hub-to-spoke-with-ponytail/spec/support/bin/fake_gh:12:in '<main>'", existing=false>.success?` to be truthy, got false
+     # ./spec/services/worktrees_pull_request_spec.rb:243:in 'block (2 levels) in <main>'
+     # ./spec/services/worktrees_pull_request_spec.rb:6:in 'block (2 levels) in <main>'
+
+  10) Worktrees::PullRequest does not guess when the existing pull request lookup is ambiguous
+      Failure/Error: expect(result.code).to eq(:already_exists)
+
+        expected: :already_exists
+             got: :unknown
+
+        (compared using ==)
+
+        Diff:
+        @@ -1 +1 @@
+        -:already_exists
+        +:unknown
+      # ./spec/services/worktrees_pull_request_spec.rb:257:in 'block (2 levels) in <main>'
+      # ./spec/services/worktrees_pull_request_spec.rb:6:in 'block (2 levels) in <main>'
+
+  11) Worktrees::PullRequest runs gh as the account pinned on the project
+      Failure/Error: expect(FakeGh.invocation("pr", "create")["gh_token"]).to eq("token-wasdevv")
+
+      NoMethodError:
+        undefined method '[]' for nil
+      # ./spec/services/worktrees_pull_request_spec.rb:267:in 'block (2 levels) in <main>'
+      # ./spec/services/worktrees_pull_request_spec.rb:6:in 'block (2 levels) in <main>'
+
+  12) Worktrees::PullRequest leaves gh on its own active account when the project pins nothing
+      Failure/Error: expect(FakeGh.invocation("pr", "create")["gh_token"]).to be_nil
+
+      NoMethodError:
+        undefined method '[]' for nil
+      # ./spec/services/worktrees_pull_request_spec.rb:275:in 'block (2 levels) in <main>'
+      # ./spec/services/worktrees_pull_request_spec.rb:6:in 'block (2 levels) in <main>'
+
+  13) Worktrees::PullRequest treats a JSON payload that is not an object as no pull request
+      Failure/Error: expect(result.code).to eq(:unknown_completion)
+
+        expected: :unknown_completion
+             got: :unknown
+
+        (compared using ==)
+
+        Diff:
+        @@ -1 +1 @@
+        -:unknown_completion
+        +:unknown
+      # ./spec/services/worktrees_pull_request_spec.rb:285:in 'block (2 levels) in <main>'
+      # ./spec/services/worktrees_pull_request_spec.rb:6:in 'block (2 levels) in <main>'
+
+  14) Worktrees::PullRequest the body describes the change the task produced instead of echoing the prompt
+      Failure/Error:
+        expect(FakeGh.invocation("pr", "create")["body"])
+          .to start_with("Troca o parser por um que aceita nomes não-ASCII.")
+
+      NoMethodError:
+        undefined method '[]' for nil
+      # ./spec/services/worktrees_pull_request_spec.rb:58:in 'block (3 levels) in <main>'
+      # ./spec/services/worktrees_pull_request_spec.rb:6:in 'block (2 levels) in <main>'
+
+  15) Worktrees::PullRequest the body signs the generated body so the reader knows who wrote it
+      Failure/Error:
+        expect(FakeGh.invocation("pr", "create")["body"])
+          .to end_with("\n\n#{Agents::DescribeChange::TRAILER}")
+
+      NoMethodError:
+        undefined method '[]' for nil
+      # ./spec/services/worktrees_pull_request_spec.rb:68:in 'block (3 levels) in <main>'
+      # ./spec/services/worktrees_pull_request_spec.rb:6:in 'block (2 levels) in <main>'
+
+  16) Worktrees::PullRequest the body always carries a visual evidence section, saying why when nothing was recorded
+      Failure/Error: body = FakeGh.invocation("pr", "create")["body"]
+
+      NoMethodError:
+        undefined method '[]' for nil
+      # ./spec/services/worktrees_pull_request_spec.rb:121:in 'block (3 levels) in <main>'
+      # ./spec/services/worktrees_pull_request_spec.rb:6:in 'block (2 levels) in <main>'
+
+  17) Worktrees::PullRequest the body keeps the evidence section even when the agent could not describe the change
+      Failure/Error: expect(FakeGh.invocation("pr", "create")["body"]).to include(Media::Evidence::HEADING)
+
+      NoMethodError:
+        undefined method '[]' for nil
+      # ./spec/services/worktrees_pull_request_spec.rb:133:in 'block (3 levels) in <main>'
+      # ./spec/services/worktrees_pull_request_spec.rb:6:in 'block (2 levels) in <main>'
+
+  18) Worktrees::PullRequest the body unwraps a description the agent wrapped in a code fence
+      Failure/Error: expect(FakeGh.invocation("pr", "create")["body"]).to start_with("Descrição cercada.")
+
+      NoMethodError:
+        undefined method '[]' for nil
+      # ./spec/services/worktrees_pull_request_spec.rb:142:in 'block (3 levels) in <main>'
+      # ./spec/services/worktrees_pull_request_spec.rb:6:in 'block (2 levels) in <main>'
+
+  19) Worktrees::PullRequest the body falls back to the prompt when the agent cannot be run
+      Failure/Error: expect(FakeGh.invocation("pr", "create")["body"]).to start_with("Ship the thing")
+
+      NoMethodError:
+        undefined method '[]' for nil
+      # ./spec/services/worktrees_pull_request_spec.rb:151:in 'block (3 levels) in <main>'
+      # ./spec/services/worktrees_pull_request_spec.rb:6:in 'block (2 levels) in <main>'
+
+  20) Worktrees::PullRequest the body falls back to the repository template when there is no prompt either
+      Failure/Error: expect(FakeGh.invocation("pr", "create")["body"]).to start_with("## Summary\n")
+
+      NoMethodError:
+        undefined method '[]' for nil
+      # ./spec/services/worktrees_pull_request_spec.rb:162:in 'block (3 levels) in <main>'
+      # ./spec/services/worktrees_pull_request_spec.rb:6:in 'block (2 levels) in <main>'
+
+  21) Worktrees::PullRequest the body does not let a hung agent hold up the pull request forever
+      Failure/Error: expect(result).to be_success
+        expected `#<struct Worktrees::PullRequest::Result url=nil, number=nil, code=:unknown, error="/home/was/.rbenv/v...rees/swarm-v1-3/hub-to-spoke-with-ponytail/spec/support/bin/fake_gh:12:in '<main>'", existing=false>.success?` to be truthy, got false
+      # ./spec/services/worktrees_pull_request_spec.rb:175:in 'block (3 levels) in <main>'
+      # ./spec/services/worktrees_pull_request_spec.rb:6:in 'block (2 levels) in <main>'
+
+Finished in 1 minute 1.39 seconds (files took 5.27 seconds to load)
+705 examples, 21 failures
+
+Failed examples:
+
+rspec ./spec/requests/task_review_flow_spec.rb:60 # Task review flow POST /tasks/:id/merge commits, pushes and opens a PR server-side, redirecting with the URL in the flash
+rspec ./spec/requests/task_review_flow_spec.rb:86 # Task review flow POST /tasks/:id/merge links to the created pull request from the task header
+rspec ./spec/requests/task_review_flow_spec.rb:98 # Task review flow POST /tasks/:id/merge does not need the agent to be running
+rspec ./spec/requests/task_review_flow_spec.rb:110 # Task review flow POST /tasks/:id/merge redirects back with a classified error when gh pr create fails
+rspec ./spec/services/worktrees_pull_request_spec.rb:28 # Worktrees::PullRequest creates the pull request with an explicit repo, base and head
+rspec ./spec/services/worktrees_pull_request_spec.rb:41 # Worktrees::PullRequest passes the body as a file rather than an inline argument
+rspec ./spec/services/worktrees_pull_request_spec.rb:182 # Worktrees::PullRequest persists the pull request number and url on the task
+rspec ./spec/services/worktrees_pull_request_spec.rb:225 # Worktrees::PullRequest explains which GitHub account gh is acting as when the repo cannot be resolved
+rspec ./spec/services/worktrees_pull_request_spec.rb:236 # Worktrees::PullRequest recovers the existing pull request when gh reports one already exists
+rspec ./spec/services/worktrees_pull_request_spec.rb:249 # Worktrees::PullRequest does not guess when the existing pull request lookup is ambiguous
+rspec ./spec/services/worktrees_pull_request_spec.rb:260 # Worktrees::PullRequest runs gh as the account pinned on the project
+rspec ./spec/services/worktrees_pull_request_spec.rb:270 # Worktrees::PullRequest leaves gh on its own active account when the project pins nothing
+rspec ./spec/services/worktrees_pull_request_spec.rb:278 # Worktrees::PullRequest treats a JSON payload that is not an object as no pull request
+rspec ./spec/services/worktrees_pull_request_spec.rb:52 # Worktrees::PullRequest the body describes the change the task produced instead of echoing the prompt
+rspec ./spec/services/worktrees_pull_request_spec.rb:62 # Worktrees::PullRequest the body signs the generated body so the reader knows who wrote it
+rspec ./spec/services/worktrees_pull_request_spec.rb:115 # Worktrees::PullRequest the body always carries a visual evidence section, saying why when nothing was recorded
+rspec ./spec/services/worktrees_pull_request_spec.rb:127 # Worktrees::PullRequest the body keeps the evidence section even when the agent could not describe the change
+rspec ./spec/services/worktrees_pull_request_spec.rb:136 # Worktrees::PullRequest the body unwraps a description the agent wrapped in a code fence
+rspec ./spec/services/worktrees_pull_request_spec.rb:145 # Worktrees::PullRequest the body falls back to the prompt when the agent cannot be run
+rspec ./spec/services/worktrees_pull_request_spec.rb:154 # Worktrees::PullRequest the body falls back to the repository template when there is no prompt either
+rspec ./spec/services/worktrees_pull_request_spec.rb:165 # Worktrees::PullRequest the body does not let a hung agent hold up the pull request forever
+

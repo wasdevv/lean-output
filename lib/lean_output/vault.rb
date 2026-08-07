@@ -51,7 +51,7 @@ module LeanOutput
       threshold = policy[:spill]
       return nil unless threshold && output.bytesize > threshold
 
-      path = write(session, label, output) or return nil
+      path = store(session, label, output) or return nil
       preview(output) + format(NOTICE, size: Text.human(output.bytesize), lines: output.count("\n") + 1, path: path)
     end
 
@@ -80,7 +80,10 @@ module LeanOutput
     # Returns nil on any filesystem trouble, and nil means the result passes
     # through whole — the failure mode of this rung is the behaviour that
     # existed before it, which is the same promise Session makes.
-    def self.write(session, label, output)
+    #
+    # Public because the ceiling stores without spilling: it has its own text
+    # to send and only needs somewhere for the original to survive.
+    def self.store(session, label, output)
       dir = File.join(root, session.id)
       FileUtils.mkdir_p(dir)
       path = File.join(dir, format('%04d-%s.txt', session.seq, slug(label)))
@@ -91,7 +94,6 @@ module LeanOutput
     rescue StandardError
       nil
     end
-    private_class_method :write
 
     # The name is for a human reading `ls`, and for the model recognising its
     # own pointer; the sequence number in front is what makes it unique.

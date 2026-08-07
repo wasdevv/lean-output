@@ -13,7 +13,13 @@ def debug(message)
 end
 
 begin
-  input = $stdin.read
+  # The payload is JSON, so it is UTF-8 by definition — but `read` tags it with
+  # the locale's encoding, and under LANG=C that is US-ASCII. The strings inside
+  # then carry valid UTF-8 bytes under a label saying they cannot exist, and the
+  # first `count`/`scan` raises into the rescue below: silent passthrough, on
+  # 45.7% of the corpus by bytes. The environment is not entitled to an opinion
+  # about the encoding of a format that defines its own.
+  input = $stdin.read.force_encoding(Encoding::UTF_8)
   debug("payload: #{input[0, 2000]}")
   result = LeanOutput::Runner.call(JSON.parse(input))
   # JSON.generate, not .bytesize: updatedToolOutput now mirrors the tool's own

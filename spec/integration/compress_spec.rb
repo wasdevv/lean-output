@@ -161,6 +161,18 @@ RSpec.describe 'bin/compress' do
       expect(stdout).to be_empty
     end
 
+    # Not a passthrough case — it is here because it *was* one. Under a C
+    # locale every result with an accent, an em dash or a box-drawing character
+    # went through untouched, which is 45.7% of the corpus by bytes, and the
+    # only evidence was an exception in a debug log nobody had enabled.
+    it 'compresses a result the locale would call invalid' do
+      original = fixture('rspec_failures.txt').sub('Failures:', "Falhas — acentuação:\nFailures:")
+      stdout, _, status = run_hook(payload_for('bundle exec rspec', original), { 'LC_ALL' => 'C' })
+
+      expect(status.exitstatus).to eq(0)
+      expect(updated_text(JSON.parse(stdout))).to include('3 failures')
+    end
+
     it 'stays silent on invalid JSON stdin' do
       stdout, _, status = Open3.capture3('ruby', BIN, stdin_data: 'not json at all {')
       expect(status.exitstatus).to eq(0)

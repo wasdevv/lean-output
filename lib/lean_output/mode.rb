@@ -50,11 +50,15 @@ module LeanOutput
     # worth pointing at. Below it the pointer costs more than the bytes it
     # replaces; the notice alone is ~220B and the preview 400B.
     #
-    # Measured over 8745 real results, spilling everything unclaimed above this
-    # takes the corpus from 9.69MB to 3.36MB — **-65%**, against -22% for the
+    # Measured over 8901 real results, spilling everything unclaimed above this
+    # takes the corpus from 9.82MB to 3.03MB — **-69%**, against -22% for the
     # ceiling and -6% for the compressors. Raising it to 1500B gives back 6
     # points and to 3000B gives back 23, so the aggressive end is where the
     # whole difference lives.
+    #
+    # Lowering it is where the idea stops paying: what is left below this floor
+    # is 5275 results averaging 258B, and a pointer costs ~200B of path and
+    # notice before the preview. Spilling those would spend more than it saves.
     SPILL_BYTES = 800
 
     POLICY = {

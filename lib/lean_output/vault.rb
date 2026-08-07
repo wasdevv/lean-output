@@ -13,21 +13,34 @@ module LeanOutput
   # aggressive rung that owes no fidelity premium — the cost is a possible
   # extra tool call, not a possible wrong answer.
   #
-  # Measured over 8745 real results: spilling everything unclaimed above 800B
-  # with a 400B preview takes 9.69MB to 3.36MB, **-65%**, against -22% for the
-  # hard ceiling and -6% for the compressors. The model would have to read back
-  # 77% of everything spilled before that win is gone, and the whole point of a
-  # pointer is that it reads back the one it needs.
+  # Measured over 8901 real results: spilling everything unclaimed above 800B
+  # takes 9.82MB to 3.03MB, **-69%**, against -22% for the hard ceiling and -6%
+  # for the compressors. The model would have to read back 77% of everything
+  # spilled before that win is gone, and the whole point of a pointer is that
+  # it reads back the one it needs.
   module Vault
-    PREVIEW = 400
+    # Enough to recognise the result and to answer from, without becoming the
+    # cost itself: at 400B the previews were 31% of everything this level still
+    # sent. The number takes after Ledger::HEAD_LINES, which already settled
+    # that two lines identify an output — this is that, plus a line of tail,
+    # because a command puts its verdict at the bottom.
+    #
+    # It is the knob with the steepest curve left: 400B holds the corpus at
+    # -65%, 250B at -69%, 150B at -72%. Everything below that is either under
+    # the spill floor or compressed signal.
+    PREVIEW = 250
     # Files per session, so a long day cannot fill the disk. Old entries are
     # dropped oldest-first; a pointer into a pruned file is a dead pointer, so
     # the number is generous rather than tidy.
     KEEP = 400
 
-    NOTICE = "\n[lean-output] %<size>s, %<lines>d lines — the ends are above, the middle is on disk, " \
-             "nothing was lost. Full output: %<path>s\n" \
-             "Read that path (with offset/limit if it is long) or grep it, rather than re-running the command.\n"
+    # Written once and then paid for on every spill, which is why it is one
+    # line and not the paragraph it started as: at 317B it was 23% of
+    # everything this level still sends, 2804 copies of the same instruction.
+    # It has to state that something was withheld, how much, and where it is —
+    # a model not told it holds a fragment answers as if it read the whole
+    # thing — and nothing beyond that survives being said 2804 times.
+    NOTICE = "\n[lean-output] middle withheld — %<size>s, %<lines>d lines, full text at %<path>s (Read or grep it)\n"
 
     def self.spill(session, label, output, policy)
       threshold = policy[:spill]

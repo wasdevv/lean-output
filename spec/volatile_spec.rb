@@ -37,7 +37,7 @@ RSpec.describe 'the volatile level' do
   let(:long) { (1..4000).map { |n| "line #{n} of something incompressible #{n * 7919}" }.join("\n") }
 
   def vault_path(text)
-    text[/Full output: (\S+)/, 1]
+    text[/full text at (\S+)/, 1]
   end
 
   describe 'the vault' do
@@ -62,11 +62,14 @@ RSpec.describe 'the volatile level' do
       expect(File.read(path)).to eq(long)
     end
 
+    # The trust boundary, and the whole of it: something was withheld, this
+    # much of it, and it is at that path. Said on every spill, so anything
+    # beyond those three facts is paid for thousands of times.
     it 'tells the model how to get the middle back' do
       pointer = bash('cat big.log', long)
 
-      expect(pointer).to include('nothing was lost')
-      expect(pointer).to match(/Read that path .* or grep it/)
+      expect(pointer).to include('middle withheld')
+      expect(pointer).to match(/full text at \S+ \(Read or grep it\)/)
     end
 
     it 'spills a Read the same way it spills a Bash result' do
@@ -89,7 +92,7 @@ RSpec.describe 'the volatile level' do
       rspec = File.read('spec/fixtures/rspec_failures.txt')
       pointer = bash('bundle exec rspec', rspec)
 
-      expect(pointer).not_to include('Full output:')
+      expect(pointer).not_to include('middle withheld')
       expect(pointer).to include('rspec ./')
     end
 

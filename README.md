@@ -57,7 +57,7 @@ The reference carries the head of what it withheld on purpose. The risk is not t
 | `safe` | Only rewrites that discard nothing, plus the ledger. For the afternoon you suspect a compressor ate the line you needed. |
 | `full` | Default. Compressors and the ledger, at the measured floors. |
 | `ultra` | A lower byte floor and a thinner margin — more rewrites, smaller wins each. |
-| `volatile` | `ultra` plus the vault: anything over 800 B that no compressor claimed goes to a file and comes back as its two ends and a path. **-61%** on a real corpus. |
+| `volatile` | `ultra` plus the vault: anything over 800 B that no compressor claimed goes to a file and comes back as its two ends and a path. **-69%** on a real corpus. |
 
 ### The vault
 
@@ -67,16 +67,13 @@ A compressor asks *"what is the shortest text that still carries this signal"*. 
 line 1 of the output
 line 2 of the output
 …
-line 3999 of the output
 line 4000 of the output
-[lean-output] 181.1kB, 4000 lines — the ends are above, the middle is on disk, nothing was lost.
-Full output: ~/.cache/lean-output/vault/<session>/0042-grep.txt
-Read that path (with offset/limit if it is long) or grep it, rather than re-running the command.
+[lean-output] middle withheld — 181.1kB, 4000 lines, full text at /home/…/vault/<session>/0042-grep.txt (Read or grep it)
 ```
 
 This is the only aggressive rung that owes no fidelity premium, because **nothing is destroyed**. The cost is a possible extra tool call, not a possible wrong answer — and the model pays it only for the result it actually needs.
 
-The case is the shape of the corpus, not the shape of an output: over 8765 real results the largest 10% of calls hold **50.1%** of all the bytes, and the median result is 1261 B. A compressor works the part of the distribution where there is nothing to win. Measured end to end on that corpus, `full` and `ultra` land at **-6%** and `volatile` at **-61%**. The model would have to read back **77%** of everything spilled before that win is gone.
+The case is the shape of the corpus, not the shape of an output: over 8901 real results the largest 10% of calls hold **50.1%** of all the bytes, and the median result is 1261 B. A compressor works the part of the distribution where there is nothing to win. Measured end to end on that corpus, `full` and `ultra` land at **-6%** and `volatile` at **-69%**. The model would have to read back **77%** of everything spilled before that win is gone.
 
 Only what no compressor claimed is offered to it. A compressed result is distilled signal — putting *that* behind a pointer would move the failures someone is about to read one tool call further away, while the bytes it replaced are already gone.
 
@@ -306,7 +303,7 @@ Saídas de suite de teste são verbosas: dots de progresso, seed, tabelas de pro
 
 **A reescrita mais barata é a que não acontece.** Antes de qualquer compressor rodar, o resultado é conferido contra o que a sessão já mostrou ao modelo: `git status` rodado quatro vezes manda os mesmos bytes quatro vezes, e um arquivo lido no começo da task e relido no fim vai duas. Repetição volta como ponteiro (`byte-identical to Read app/… from 6 tool calls back — 8.3kB, 214 lines withheld`) mais as duas primeiras linhas, que existem pro caso de uma compactação de contexto ter apagado a ocorrência original. O match é por digest do resultado inteiro — um byte diferente e o arquivo vai completo de novo. **A janela de recência é medida em bytes de saída que passaram, não em número de chamadas** (padrão 250 kB): quarenta leituras de um arquivo de 200 linhas e quarenta `git status` empurram quantidades muito diferentes de histórico pra fora. Nas sessões simuladas do bench isso vale de **-12% a -84%**, e é a única coisa que alcança o `Read`, onde não há ruído pra nenhum compressor tirar.
 
-**Níveis**: `/lean` mostra o nível atual e o quanto já economizou; `/lean safe` troca. `off` não toca em nada, `safe` só aceita reescrita que não descarta nada (mais o ledger), `full` é o padrão medido, `ultra` baixa o piso e aceita ganho menor, e `volatile` liga o **vault**: o que passa de 800 B e nenhum compressor reclamou vai pra um arquivo e volta como as duas pontas mais o caminho exato — nada é destruído, o meio fica a um `Read` de distância. No corpus real: `full` e `ultra` dão -6%, `volatile` dá **-61%**. É opt-in por nome e a subida por profundidade nunca entra nele. O nível é gravado por diretório de trabalho e lido a cada chamada — não precisa reiniciar nada.
+**Níveis**: `/lean` mostra o nível atual e o quanto já economizou; `/lean safe` troca. `off` não toca em nada, `safe` só aceita reescrita que não descarta nada (mais o ledger), `full` é o padrão medido, `ultra` baixa o piso e aceita ganho menor, e `volatile` liga o **vault**: o que passa de 800 B e nenhum compressor reclamou vai pra um arquivo e volta como as duas pontas mais o caminho exato — nada é destruído, o meio fica a um `Read` de distância. No corpus real: `full` e `ultra` dão -6%, `volatile` dá **-69%**. É opt-in por nome e a subida por profundidade nunca entra nele. O nível é gravado por diretório de trabalho e lido a cada chamada — não precisa reiniciar nada.
 
 O compressor de diff é o que mais economiza, porque uma dependência vendorada sozinha é maior que tudo que um revisor de fato lê. Hunk escrito à mão passa **byte a byte**; corpo de arquivo gerado (`vendor/`, lockfile, `app/assets/builds/`, `*.min.js`, source map) vira uma linha que ainda mostra o caminho e o `+N/-M`. Num commit real de vendoring do CodeMirror 6: **651.833 B → 13.247 B (-97%)**, de ~163k para ~3,3k tokens. `db/schema.rb` fica de fora de propósito — é o arquivo que mostra o que a migration realmente fez.
 

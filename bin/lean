@@ -35,14 +35,46 @@ def analyze(root)
   puts LeanOutput::Corpus.report(results)
 end
 
+# What the vault is holding, because a spill writes a file and then nothing
+# mentions it again. The pointer in the context window names one result; this
+# names the rest, and the disk they cost.
+def vault
+  files = Dir.glob(File.join(LeanOutput::Vault.root, '*', '*.txt'))
+  return puts 'lean-output: the vault is empty — only `volatile` fills it.' if files.empty?
+
+  total = files.sum { |file| File.size(file) }
+  puts "lean-output vault — #{plural(files.size, 'spill')} over " \
+       "#{plural(LeanOutput::Vault.sessions.size, 'session')}, " \
+       "#{LeanOutput::Text.human(total)} in #{LeanOutput::Vault.root}"
+  recent(files)
+end
+
+# Newest first across every session rather than "the session you are in". This
+# command knows its working directory, not its conversation, and the directory
+# mtime is quantised finely enough to tie between two spills a millisecond
+# apart — so picking one directory and calling it yours is a coin flip printed
+# as a fact. Ordering by time answers the question anyway: the label on each
+# file is what you recognise it by.
+def recent(files)
+  files.sort_by { |file| -File.mtime(file).to_f }.first(10).each do |file|
+    puts format('  %9s  %s', LeanOutput::Text.human(File.size(file)), file)
+  end
+  puts "  … and #{files.size - 10} older" if files.size > 10
+end
+
+def plural(count, word)
+  "#{count} #{word}#{'s' unless count == 1}"
+end
+
 cwd = Dir.pwd
 argument = ARGV.first
 
 case argument
 when nil then report(cwd)
 when '-v', '--version' then puts LeanOutput::VERSION
-when '-h', '--help' then puts "usage: lean [#{LeanOutput::Mode::LEVELS.join('|')}|analyze [root]]"
+when '-h', '--help' then puts "usage: lean [#{LeanOutput::Mode::LEVELS.join('|')}|vault|analyze [root]]"
 when 'analyze' then analyze(ARGV[1])
+when 'vault' then vault
 else
   level = LeanOutput::Mode.write(cwd, argument)
   if level

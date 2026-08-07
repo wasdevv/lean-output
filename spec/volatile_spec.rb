@@ -100,6 +100,24 @@ RSpec.describe 'the volatile level' do
       expect(bash('cat big.log', long, level: 'ultra')).to be_nil
       expect(bash('cat big.log', long, level: 'full')).to be_nil
     end
+
+    # KEEP bounds the files inside one session and used to be the whole story,
+    # which left the number of sessions unbounded — the shape of leak that
+    # reads as working for months and then as a full disk.
+    it 'keeps the number of session directories bounded' do
+      (LeanOutput::Vault::SESSIONS + 5).times { bash('cat big.log', long) }
+
+      expect(LeanOutput::Vault.sessions.size).to eq(LeanOutput::Vault::SESSIONS)
+    end
+
+    # The pointer names one result; this is how the other 399 stay findable.
+    # Membership, not order: two spills a millisecond apart tie on directory
+    # mtime, so `sessions` orders by a clock too coarse to promise more.
+    it 'lists the session it wrote to' do
+      path = vault_path(bash('cat big.log', long))
+
+      expect(LeanOutput::Vault.sessions).to include(File.dirname(path))
+    end
   end
 
   describe 'the ceiling' do

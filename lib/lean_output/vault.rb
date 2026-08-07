@@ -33,6 +33,11 @@ module LeanOutput
     # dropped oldest-first; a pointer into a pruned file is a dead pointer, so
     # the number is generous rather than tidy.
     KEEP = 400
+    # Session directories kept, for the same reason KEEP bounds the files inside
+    # one. KEEP alone bounds a session to 400 files and leaves the number of
+    # sessions unbounded, which is the shape of leak that reads as working for
+    # months and then as a full disk.
+    SESSIONS = 20
 
     # Written once and then paid for on every spill, which is why it is one
     # line and not the paragraph it started as: at 317B it was 23% of
@@ -58,15 +63,30 @@ module LeanOutput
     end
     private_class_method :preview
 
+    def self.root
+      File.join(Session.dir, 'vault')
+    end
+
+    # Newest first, so the first entry is the session you are in. A spill from
+    # a parallel hook can remove a directory between the glob and the stat, and
+    # a listing is never worth raising over.
+    def self.sessions
+      Dir.glob(File.join(root, '*')).select { |path| File.directory?(path) }
+                                    .sort_by { |path| -File.mtime(path).to_f }
+    rescue StandardError
+      []
+    end
+
     # Returns nil on any filesystem trouble, and nil means the result passes
     # through whole — the failure mode of this rung is the behaviour that
     # existed before it, which is the same promise Session makes.
     def self.write(session, label, output)
-      dir = File.join(Session.dir, 'vault', session.id)
+      dir = File.join(root, session.id)
       FileUtils.mkdir_p(dir)
       path = File.join(dir, format('%04d-%s.txt', session.seq, slug(label)))
       File.write(path, output)
       prune(dir)
+      FileUtils.rm_rf(sessions.drop(SESSIONS))
       path
     rescue StandardError
       nil

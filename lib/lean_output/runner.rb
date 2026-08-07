@@ -42,8 +42,7 @@ module LeanOutput
       return nil if output.empty?
 
       session = Session.load(payload)
-      level, origin = Mode.source(payload['cwd'])
-      policy = Mode.policy(level, depth: (session.bytes if origin == :default))
+      policy = Mode.policy(Mode.resolve(payload['cwd']))
       return nil unless policy
 
       climb(session, tool, payload, output, policy)

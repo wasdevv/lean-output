@@ -155,12 +155,5 @@ RSpec.describe 'the volatile level' do
       expect(pointer).to include('re-run the command narrower')
       expect(pointer).not_to include('full text at')
     end
-
-    # It is the only rung that can lose something, so nothing may arrive at it
-    # by accident — a session that merely got long climbs to ultra and stops.
-    it 'is never reached by a session that merely got long' do
-      expect(LeanOutput::Mode.policy('ultra', depth: 10_000_000)).to eq(LeanOutput::Mode::POLICY['ultra'])
-      expect(LeanOutput::Mode.policy('full', depth: 10_000_000)).to eq(LeanOutput::Mode::POLICY['ultra'])
-    end
   end
 end

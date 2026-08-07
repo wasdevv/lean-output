@@ -55,9 +55,15 @@ The reference carries the head of what it withheld on purpose. The risk is not t
 |---|---|
 | `off` | Every result reaches the model untouched. Same as `LEAN_OUTPUT_DISABLE=1`, but scoped to this directory. |
 | `safe` | Only rewrites that discard nothing, plus the ledger. For the afternoon you suspect a compressor ate the line you needed. |
-| `full` | Default. Compressors and the ledger, at the measured floors. |
+| `full` | Compressors and the ledger, at the measured floors. |
 | `ultra` | A lower byte floor and a thinner margin — more rewrites, smaller wins each. |
-| `volatile` | `ultra` plus the vault: anything over 800 B that no compressor claimed goes to a file and comes back as its two ends and a path. **-69%** on a real corpus. |
+| `volatile` | Default. `ultra` plus the vault: anything over 800 B that no compressor claimed goes to a file and comes back as its two ends and a path. **-69%** on a real corpus. |
+
+#### Why the default is the aggressive one
+
+A byte is not paid once. Measured over 118 sessions of real transcripts, **94.7%** of the token bill is cache reads — the accumulated prefix re-read on every turn — and a session averages **225 turns**. So a result admitted to the window is paid roughly once per turn remaining in that session. The 11.96 MB of tool output those sessions admitted cost 5.20 billion byte-turns, ~1300M tokens, **~27% of the entire bill**.
+
+Against a multiplier of 225, the 5.4% a compressor wins on a large result is rounding error and the 99.3% the vault wins by declining to carry it is the whole product. `full` was the right default while the ceiling could still destroy something; it no longer can, because the clip rung stores the original before it cuts.
 
 ### The vault
 
@@ -77,7 +83,7 @@ The case is the shape of the corpus, not the shape of an output: over 8901 real 
 
 Only what no compressor claimed is offered to it. A compressed result is distilled signal — putting *that* behind a pointer would move the failures someone is about to read one tool call further away, while the bytes it replaced are already gone.
 
-Behind the vault sits a hard 4 kB ceiling, which is the one place here that genuinely discards content, and it applies only to a rewrite that came out enormous anyway. That is why `volatile` is the only level the depth climb will never walk into on its own: it has to be asked for by name.
+Behind the vault sits a hard 4 kB ceiling, and it is the one place here that cuts. It applies only to a rewrite that came out enormous anyway — raw output that big was spilled a rung earlier — which means it fires almost exclusively on compressed results, exactly the ones the vault declined. So it stores the original before it cuts: what left the context window is still on disk, at every rung without exception.
 
 `safe` is not a vibe: `lossless?` is already a first-class idea here — grep regroups and keeps every line, everything else throws a backtrace or a banner away on purpose — so "only rewrites that discard nothing" is a guarantee the code can actually make.
 
@@ -175,7 +181,7 @@ The curve flattens by 250 kB, which is where the default sits: past that point a
 
 `bin/bench` fails the build on any of these:
 
-1. **Zero loss, at every level** — every failure/offense `file:line`, every rustc `--> file:line:col`, every changed file path and every grep hit in the original must appear in the compressed output. The file and the line are checked *apart*, not as one glued string: moving the path up into a header is allowed, losing either half is not. Checked under `safe`, `full` and `ultra`, because a level that saves more by losing one is not a level, it is a different product. `volatile` is exempt by construction and is the exception that states the rule: it is a different product, which is why it is opt-in, why it announces every clip, and why the depth climb refuses to walk into it.
+1. **Zero loss, at every level** — every failure/offense `file:line`, every rustc `--> file:line:col`, every changed file path and every grep hit in the original must appear in the compressed output. The file and the line are checked *apart*, not as one glued string: moving the path up into a header is allowed, losing either half is not. Checked under `safe`, `full` and `ultra`, because a level that saves more by losing one is not a level, it is a different product. `volatile` is exempt by construction and is the exception that states the rule: it is a different product, which is why it announces every clip and why every clip stores the original first.
 2. **Nothing unclaimed disappears** — text no compressor recognised must come back byte for byte, so a migration that ran before the suite, or a diff with nothing to collapse, survives intact.
 3. **No vacuous passes** — a fixture that is supposed to contain failures must actually yield locations to the extractor. Without this, a broken extractor would make invariant 1 pass trivially.
 4. **Negative corpus** — ten inputs that must come back *untouched*: libtest results, `--message-format=json`, `-f json`, nested and multiline JSON values, a grep hit list where no path repeats, output below the line threshold, a first-sighting Read, a Read too small to be worth a pointer, and a tool with no rung at all.
@@ -303,7 +309,7 @@ Saídas de suite de teste são verbosas: dots de progresso, seed, tabelas de pro
 
 **A reescrita mais barata é a que não acontece.** Antes de qualquer compressor rodar, o resultado é conferido contra o que a sessão já mostrou ao modelo: `git status` rodado quatro vezes manda os mesmos bytes quatro vezes, e um arquivo lido no começo da task e relido no fim vai duas. Repetição volta como ponteiro (`byte-identical to Read app/… from 6 tool calls back — 8.3kB, 214 lines withheld`) mais as duas primeiras linhas, que existem pro caso de uma compactação de contexto ter apagado a ocorrência original. O match é por digest do resultado inteiro — um byte diferente e o arquivo vai completo de novo. **A janela de recência é medida em bytes de saída que passaram, não em número de chamadas** (padrão 250 kB): quarenta leituras de um arquivo de 200 linhas e quarenta `git status` empurram quantidades muito diferentes de histórico pra fora. Nas sessões simuladas do bench isso vale de **-12% a -84%**, e é a única coisa que alcança o `Read`, onde não há ruído pra nenhum compressor tirar.
 
-**Níveis**: `/lean` mostra o nível atual e o quanto já economizou; `/lean safe` troca. `off` não toca em nada, `safe` só aceita reescrita que não descarta nada (mais o ledger), `full` é o padrão medido, `ultra` baixa o piso e aceita ganho menor, e `volatile` liga o **vault**: o que passa de 800 B e nenhum compressor reclamou vai pra um arquivo e volta como as duas pontas mais o caminho exato — nada é destruído, o meio fica a um `Read` de distância. No corpus real: `full` e `ultra` dão -6%, `volatile` dá **-69%**. É opt-in por nome e a subida por profundidade nunca entra nele. O nível é gravado por diretório de trabalho e lido a cada chamada — não precisa reiniciar nada.
+**Níveis**: `/lean` mostra o nível atual e o quanto já economizou; `/lean safe` troca. `off` não toca em nada, `safe` só aceita reescrita que não descarta nada (mais o ledger), `full` roda os compressores nos pisos medidos, `ultra` baixa o piso e aceita ganho menor, e `volatile` — **o padrão** — liga o **vault**: o que passa de 800 B e nenhum compressor reclamou vai pra um arquivo e volta como as duas pontas mais o caminho exato, e o meio fica a um `Read` de distância. No corpus real: `full` e `ultra` dão -6%, `volatile` dá **-69%**. O padrão é o agressivo porque **um byte não é pago uma vez**: 94,7% da conta de tokens é cache read (o prefixo relido a cada turno) e uma sessão tem 225 turnos em média, então um resultado admitido na janela é pago uma vez por turno restante — 27% da conta inteira é tool output carregado. O nível é gravado por diretório de trabalho e lido a cada chamada — não precisa reiniciar nada.
 
 O compressor de diff é o que mais economiza, porque uma dependência vendorada sozinha é maior que tudo que um revisor de fato lê. Hunk escrito à mão passa **byte a byte**; corpo de arquivo gerado (`vendor/`, lockfile, `app/assets/builds/`, `*.min.js`, source map) vira uma linha que ainda mostra o caminho e o `+N/-M`. Num commit real de vendoring do CodeMirror 6: **651.833 B → 13.247 B (-97%)**, de ~163k para ~3,3k tokens. `db/schema.rb` fica de fora de propósito — é o arquivo que mostra o que a migration realmente fez.
 

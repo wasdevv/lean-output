@@ -14,11 +14,25 @@ module LeanOutput
   #
   # The precedence inverts ponytail's in one place, and the inversion is the
   # point: there, an absent flag means off, because the skill is opt-in per
-  # session. Here it means `full` — the plugin was installed to compress, and
-  # silence is consent.
+  # session. Here it means `volatile` — the plugin was installed to compress,
+  # and silence is consent.
   module Mode
     LEVELS = %w[off safe full ultra volatile].freeze
-    DEFAULT = 'full'
+    # `volatile`, not `full`, and the reason is that a byte is not paid once.
+    #
+    # Measured over 118 sessions of real transcripts: 94.7% of the token bill is
+    # cache reads — the accumulated prefix re-read on every turn — and sessions
+    # average 225 turns. So a result admitted to the window is paid roughly once
+    # per turn remaining in that session. The 11.96MB of tool output those
+    # sessions admitted cost 5.20 billion byte-turns, ~1300M tokens, ~27% of the
+    # entire bill.
+    #
+    # That reframes every level below this one. The compressors win 5.4% of the
+    # bytes of a large result; declining to carry it wins 99.3%. Against a
+    # multiplier of 225 the first is rounding error. `full` was the right default
+    # while the ceiling could destroy something — it no longer can, because the
+    # clip rung stores the original before it cuts.
+    DEFAULT = 'volatile'
 
     # Each level is a floor and two ceilings, not a different algorithm.
     #
@@ -80,48 +94,14 @@ module LeanOutput
 
     CONFIG_FILE = 'config.json'
 
-    # A context window is not equally expensive throughout a session, so the
-    # level is allowed to climb one step once the session is deep enough that
-    # the next result is plausibly pushing something out.
-    #
-    # It only ever climbs. The obvious design was the symmetric one — gentle
-    # early, harder later — and the corpus says it would have switched the
-    # plugin off for most of what it exists to handle: measured over 94 real
-    # sessions, **55% of all tool-output bytes arrive while the session is still
-    # under 100kB deep**, and 86% of sessions never reach 250kB at all. Being
-    # gentle early is being gentle almost always.
-    #
-    # 250kB is where the last 18% of bytes live, and it is the same window the
-    # ledger already measures references in, so the two numbers stay comparable.
-    DEEP_BYTES = 250_000
-
     # `safe` exists because `lossless?` was already a first-class idea in this
     # codebase — grep regroups and keeps every line, everything else throws a
     # backtrace or a banner away on purpose. So "only rewrites that discard
     # nothing" is a guarantee the code can actually make, not a vibe. It is the
     # level for the afternoon you suspect the compressor ate the line you
     # needed and want the savings that carry no such risk.
-    def self.policy(level, depth: nil)
-      POLICY[deepen(normalize(level) || DEFAULT, depth)]
-    end
-
-    # `depth` is nil whenever the level was chosen rather than defaulted, and
-    # that is the whole guard: `lean safe` is someone saying they suspect a
-    # compressor ate the line they needed, and a session that got long is not an
-    # argument against them. Only an absence of a decision may be moved.
-    #
-    # No hysteresis, because none is possible: depth is cumulative bytes of tool
-    # output, which never decreases, so the step can never oscillate.
-    #
-    # It cannot reach `volatile` on its own: the climb only moves a level
-    # nobody chose, the default is `full`, and one step from `full` is `ultra`.
-    # A hard ceiling throws bytes away by construction, so it stays something
-    # someone asks for.
-    def self.deepen(level, depth)
-      return level unless depth.to_i >= DEEP_BYTES
-
-      step = LEVELS[[LEVELS.index(level) + 1, LEVELS.size - 1].min]
-      POLICY[step][:cap] ? level : step
+    def self.policy(level)
+      POLICY[normalize(level) || DEFAULT]
     end
 
     def self.normalize(level)
@@ -133,19 +113,12 @@ module LeanOutput
     # explicit env beats a flag the user forgot they set, the flag beats the
     # configured default, and the default beats nothing.
     def self.resolve(cwd = nil)
-      source(cwd).first
-    end
+      return 'off' if ENV['LEAN_OUTPUT_DISABLE'] == '1'
 
-    # [level, :chosen | :default]. The second half is what lets depth move a
-    # level without ever overriding one the user asked for.
-    def self.source(cwd = nil)
-      return ['off', :chosen] if ENV['LEAN_OUTPUT_DISABLE'] == '1'
-
-      chosen = normalize(ENV['LEAN_OUTPUT_MODE']) ||
-               normalize(flag(cwd)) ||
-               normalize(configured_default)
-
-      chosen ? [chosen, :chosen] : [DEFAULT, :default]
+      normalize(ENV['LEAN_OUTPUT_MODE']) ||
+        normalize(flag(cwd)) ||
+        normalize(configured_default) ||
+        DEFAULT
     end
 
     # The level the user switched to mid-session, in a file because a hook is a

@@ -3,13 +3,15 @@
 RSpec.describe LeanOutput::Mode do
   around do |example|
     previous = ENV.values_at('LEAN_OUTPUT_MODE', 'LEAN_OUTPUT_DISABLE', 'LEAN_OUTPUT_CONFIG_DIR')
+    # This file is the one that owns precedence, so it starts from nothing said.
+    ENV.delete('LEAN_OUTPUT_MODE')
     example.run
     ENV['LEAN_OUTPUT_MODE'], ENV['LEAN_OUTPUT_DISABLE'], ENV['LEAN_OUTPUT_CONFIG_DIR'] = previous
   end
 
   describe '.resolve' do
     it 'compresses when nothing says otherwise' do
-      expect(described_class.resolve('/tmp/anywhere')).to eq('full')
+      expect(described_class.resolve('/tmp/anywhere')).to eq('volatile')
     end
 
     it 'lets the kill-switch beat every other source' do
@@ -37,7 +39,7 @@ RSpec.describe LeanOutput::Mode do
 
     it 'ignores a level it does not recognise' do
       expect(described_class.write('/tmp/anywhere', 'aggressive')).to be_nil
-      expect(described_class.resolve('/tmp/anywhere')).to eq('full')
+      expect(described_class.resolve('/tmp/anywhere')).to eq('volatile')
     end
 
     it 'falls back to the configured default' do
@@ -54,7 +56,7 @@ RSpec.describe LeanOutput::Mode do
         File.write(File.join(dir, 'config.json'), 'not json {')
         ENV['LEAN_OUTPUT_CONFIG_DIR'] = dir
 
-        expect(described_class.resolve('/tmp/anywhere')).to eq('full')
+        expect(described_class.resolve('/tmp/anywhere')).to eq('volatile')
       end
     end
   end

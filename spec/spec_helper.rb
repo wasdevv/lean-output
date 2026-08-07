@@ -19,12 +19,19 @@ RSpec.configure do |config|
   # sharing a fixture, and the second one gets a reference instead of the
   # compression it was asserting on. Exported rather than stubbed because the
   # integration specs run the hook in a child process.
+  # Pinned to `full` rather than left at the default, because most of this suite
+  # asks what a *rung* does and the default decides which rungs are on. The
+  # vault claims almost everything the compressor and ledger specs use as their
+  # negative case, so an unpinned suite would assert the default over and over
+  # and the rungs below it not at all. The default itself is asserted in
+  # mode_spec, and volatile_spec sets its own level per example.
   config.around do |example|
     Dir.mktmpdir('lean-output-state') do |dir|
-      previous = ENV['LEAN_OUTPUT_STATE_DIR']
+      previous = ENV.values_at('LEAN_OUTPUT_STATE_DIR', 'LEAN_OUTPUT_MODE')
       ENV['LEAN_OUTPUT_STATE_DIR'] = dir
+      ENV['LEAN_OUTPUT_MODE'] ||= 'full'
       example.run
-      ENV['LEAN_OUTPUT_STATE_DIR'] = previous
+      ENV['LEAN_OUTPUT_STATE_DIR'], ENV['LEAN_OUTPUT_MODE'] = previous
     end
   end
 

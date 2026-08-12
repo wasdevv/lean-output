@@ -83,7 +83,7 @@ module LeanOutput
       # already gone anyway. Raw output nobody could claim is the opposite: it
       # is where the size is and where the redundancy is unprovable, so it goes
       # to disk whole instead of being argued with.
-      spilled = Vault.spill(session, label, output, policy) if claimed.nil?
+      spilled = Vault.spill(session, label, output, policy) if spillable?(tool, payload, output, claimed, policy)
 
       [clip(session, label, spilled || claimed || output, output, policy), false]
     end
@@ -136,6 +136,27 @@ module LeanOutput
       path = payload.dig('tool_input', 'file_path') || payload.dig('tool_input', 'path')
       path.to_s.start_with?(Vault.root)
     end
+
+    # The vault takes what no compressor wanted — and also what a *lossless* one
+    # produced, when the claim comes back still large enough to spill.
+    #
+    # The distinction is what the claim did to the content. A lossless claim is
+    # a reformatting: everything the raw output said, it still says, so a
+    # pointer in front of it hides nothing that was not already recoverable.
+    # Measured on the corpus, 10459B of grep matches compressed to 2157B and
+    # spills to about 320B — the compressor was costing 1800B against the vault
+    # on the single most frequent command in a real session.
+    #
+    # A lossy claim is the opposite and stays where it is. Its noise is already
+    # gone; what remains is the distilled signal someone is about to read, and
+    # that is the one thing a pointer must never stand in front of.
+    def self.spillable?(tool, payload, output, claimed, policy)
+      return true if claimed.nil?
+      return false unless policy[:spill] && claimed.bytesize > policy[:spill]
+
+      LeanOutput.lossless?(output, command: command_for(tool, payload))
+    end
+    private_class_method :spillable?
 
     def self.deduplicable?(tool, output, policy)
       return false unless DEDUPED.include?(tool) || tool.match?(MCP_TOOL)

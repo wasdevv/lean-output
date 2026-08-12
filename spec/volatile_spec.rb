@@ -204,6 +204,34 @@ RSpec.describe 'the volatile level' do
     end
   end
 
+  describe 'a claim the vault is allowed to take' do
+    # grep factors repeated paths out and discards nothing, so a pointer in
+    # front of its claim hides nothing the raw output had. On the corpus that
+    # claim was still 2157B where the vault gets to about 320B, on the most
+    # frequent command in a real session.
+    # Asserting only on "full text at" passes without the change: a 2157B claim
+    # is over the ceiling anyway, so `clip` fires and prints that same phrase.
+    # The two paths are told apart by their own wording, and by what they cost.
+    it 'spills a lossless claim that is still large' do
+      result = bash('grep -rn "def self" lib/', File.read('spec/fixtures/grep_many.txt'))
+
+      expect(result).to include('middle withheld')
+      expect(result).not_to include('clipped to')
+      expect(result.bytesize).to be < 600
+    end
+
+    # rspec's claim is what is left after the passing examples and the gem
+    # frames are gone. Putting that behind a pointer hides the failures someone
+    # opened the terminal to read — the one thing the vault must not take.
+    it 'leaves a lossy claim in front of the reader' do
+      result = bash('bundle exec rspec', File.read('spec/fixtures/rspec_failures.txt'))
+
+      expect(result).not_to be_nil
+      expect(result).not_to include('full text at')
+      expect(result).to include('Failure')
+    end
+  end
+
   describe 'what the ceiling is allowed to cut' do
     # A ceiling is supposed to work the tail — chained commands and bulk row
     # sets. Every single-tool verdict in the corpus compresses to 1095B or

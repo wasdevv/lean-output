@@ -1,0 +1,1 @@
+/tmp/claude-1000/-home-dev--swarm-worktrees-swarm-v1-3-improve-v2/30e43969-2a9a-455c-8977-25202b81f8bf/scratchpad/capture.sh: line 11: rg: command not found

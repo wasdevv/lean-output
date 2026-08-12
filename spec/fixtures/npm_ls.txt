@@ -1,0 +1,6 @@
+/usr/lib
+├── @anthropic-ai/claude-code@2.1.224
+├── @nanonets/graft@0.9.1
+├── corepack@0.34.6
+└── npm@10.9.7
+

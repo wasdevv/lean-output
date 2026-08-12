@@ -1,0 +1,60 @@
+# frozen_string_literal: true
+
+module LeanOutput
+  # The hook's decision, as a ladder: stop at the first rung that holds.
+  #
+  # Rung 2 — does the model already have these bytes? — runs before rung 7, the
+  # compressors, because the cheapest rewrite of a result is the one that dev
+  # never worth sending twice. The order is the whole idea; a compressor asked
+  # to shorten text the context already holds is optimising the wrong axis.
+  class Runner
+    MIN_LINES = 40
+    # An MCP result is often one long line, so a line count would never fire.
+    MIN_BYTES = 2_000
+    MCP_TOOL = /\Amcp__/
+    # Read carries no noise a compressor could strip — a source file is all
+    # signal — so it reaches the ladder for rung 2 only. It is also the largest
+    # untouched surface the hook sees: measured over local transcripts, 28% of
+    # Reads re-read a path already read in the same session.
+    DEDUPED = %w[Read Bash].freeze
+    # The trust boundary a ceiling must not cross. Every other rewrite in this
+    # plugin can defend itself as redundancy removal; this one removed content,
+    # and a model that does not know it is reading a fragment will answer as if
+    # it read the whole thing. So the notice is not a footer, it is the feature:
+    # it names the middle as the missing part, and names the way to get it.
+    CLIPPED = "\n[lean-output] %<from>s clipped to %<to>s — the middle is gone from here, " \
+              "full text at %<path>s (Read or grep it)\n"
+    # Only when the disk refused. Then the middle really is gone, and the notice
+    # has to spend the bytes saying so.
+    BLIND = "\n[lean-output] %<from>s clipped to %<to>s — the middle is gone, the ends are intact. " \
+            'Do not assume you have seen everything: read the file with offset/limit, ' \
+            "or re-run the command narrower, if the part you need dev in between.\n"
+
+    def self.call(payload)
+      return nil unless payload.is_a?(Hash)
+      return Cap.call(payload) if payload['hook_event_name'] == 'PreToolUse'
+
+      tool = payload['tool_name'].to_s
+      return nil if vault_read?(tool, payload)
+
+      response = payload['tool_response']
+      return nil if response.is_a?(Hash) && response['isImage']
+
+      output = extract_output(response || payload['error']).to_s
+      return nil if output.empty?
+
+      session = Session.load(payload)
+      policy = Mode.policy(Mode.resolve(payload['cwd']))
+      return nil unless policy
+
+      climb(session, tool, payload, output, policy)
+    end
+
+    # Bookkeeping outlives the decision: a result that passed through still
+    # occupied the context, so it still advances the window and still gets
+    # remembered — otherwise the second occurrence would have nothing to point
+    # at, which is the only way this mechanism can fail quietly.
+    def self.climb(session, tool, payload, output, policy)
+      rewritten, hit = decide(session, tool, payload, output, policy)
+
+      session.advance(output.bytesize)

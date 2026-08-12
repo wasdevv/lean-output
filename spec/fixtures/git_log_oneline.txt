@@ -1,0 +1,35 @@
+1e98662 The ceiling reaches the command that produces the bytes
+4dcd297 Turn the ceiling down, because the meter said it could
+33b29cb Serve the vault whole, because a pointer must resolve
+e9d0523 Make the pointer cheap, and let the floor follow it down
+405ddac Default to the vault, because a byte is not paid once
+19c8934 Stop the ceiling destroying what the vault would have kept, and the locale silencing the hook
+24d1813 Make the vault findable, and stop it growing without bound
+ba07101 Shrink the pointer, which had become half of what dev left
+abb1f15 Call it 1.0.0
+af68137 Spill unclaimed output to disk and hand back a pointer
+7320fdf Put a ceiling where the bytes actually are
+30aba90 Measure the re-run rate against its own control, and stop there
+73c60e4 Let the level climb with the session, and only climb
+d0e592d Cap unbounded listings before they run, and say so
+f8c5dec Measure where the bytes are instead of where the compressors point
+5ef77ac Document the ladder, and let it reach Read
+b6542de Mirror the tool's output shape so the host stops discarding every rewrite
+e421c4d Group grep hits by file, and stop charging a risk premium to a lossless rewrite
+72807ab Rewrite by span so a chain never deletes what it did not read
+1a15031 Compress chained check suites instead of passing through them
+5d9d29d Trigger on dense short output: a 400B floor beside the line count
+923dfe1 Add library API with budget-aware fitting; compress MCP results
+a9dcd62 Add cargo compressor: -40% to -65% on rustc diagnostics
+3868555 Add git diff compressor: collapse generated files, -85% on vendored bumps
+210b94b Add Brakeman compressor: -79% to -97% on real pipeline_hq scans
+9eedc32 Dedupe RuboCop offenses by cop/message: -55% -> -70% compression
+f4a5e61 Show real pipeline_hq session in README example: 3.2kB -> 346B (-90%)
+a2f36fc Handle failed tool calls via PostToolUseFailure
+78c858f Add README with benchmark table, install guide and PT-BR section
+086d924 Add benchmark with token counting and zero-loss location check
+ea3feb4 Add fail-safe hook runner (bin/compress) with end-to-end subprocess specs
+7b9345f Add RuboCop compressor: offenses grouped by file, excerpts and carets dropped
+f140c29 Add Detector and RSpec compressor (TDD over real fixtures)
+027d922 Add real-world fixtures captured from a Rails 8 app (RSpec + RuboCop, plain and ANSI)
+77e4148 Scaffold lean-output plugin: manifest, PostToolUse hook config, RSpec setup

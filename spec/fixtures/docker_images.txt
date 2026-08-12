@@ -1,0 +1,14 @@
+WARNING: This output is designed for human readability. For machine-readable output, please use --format.
+IMAGE                             ID             DISK USAGE   CONTENT SIZE   EXTRA
+djfarrelly/maildev:latest         19d9b74bd9f5        123MB         26.1MB   U    
+dpage/pgadmin4:latest             cefc4cc6b7d9        751MB          176MB   U    
+nobe-nobe-cad-unico-web:latest    ca94986f103d       6.53GB         2.11GB   U    
+nobe-nobe-nginx:latest            171bef5945aa        238MB         63.1MB   U    
+nobe-nobe-pg:latest               95bdb1aa1aaa        646MB          163MB   U    
+nobe-nobe-protocolo-web:latest    5013533eb751       4.54GB          1.2GB   U    
+nobe-nobe-tributario-web:latest   470d64c3fd82       6.56GB         1.67GB   U    
+pgvector/pgvector:pg16            1d533553fefe        621MB          156MB   U    
+postgres:15                       8f70a8af16ac        633MB          164MB        
+redis:7-alpine                    e7723ff73d96       57.8MB         16.8MB   U    
+redis:alpine                      8096655e4377        155MB         38.1MB        
+redis:latest                      0c341492924c        204MB         55.3MB   U    

@@ -1,0 +1,176 @@
+commit 1e986626c9415f9433f8a742820476ab64b9ec09
+Author: Dev <dev@example.com>
+Date:   Wed Aug 12 13:32:56 2026 -0300
+
+    The ceiling reaches the command that produces the bytes
+    
+    Measured over 40 real transcripts, grouped by the head word of each Bash
+    call. `cd` led every other word at 293kB across 331 calls — and `cd` is
+    not a command. It is the prefix in `cd path && real-command`, and taking
+    the first word pointed the whole ceiling at it, so the largest single
+    category of output dev uncapped by construction.
+    
+    corpus.rb had stripped that prefix before classifying since it dev
+    written. cap.rb never did. The two ends of the same question — what
+    command is this? — had disagreed all along, and only the end that could
+    refuse dev wrong.
+    
+    Cap now strips a `cd`/`env` prefix, applies UNSAFE to what is left, and
+    appends the ceiling at the end, where the pipe binds to the command that
+    dev classified rather than to the `cd`. `\S+` holds the prefix to one
+    unquoted token: a path with a space never matches and is refused whole
+    instead of being split at a guessed boundary.
+    
+    git, by subcommand rather than by binary. `git log` dev the largest
+    uncapped subcommand at 69kB over 50 calls and `git status` added 34kB,
+    neither with a compressor behind it. `git diff` and `git show` have one,
+    and a ceiling in front of it hands the compressor a truncated diff — it
+    would lose hunks and paths it exists to keep. Capping the binary would
+    have been a net loss on exactly the two subcommands already handled.
+    
+    Three more, all measured before deciding:
+    
+      bin/bench crashed on `LEAN_OUTPUT_MODE=off` — no footer means a zero
+      denominator, and NaN.round raises rather than prints. The first of the
+      three divisions dev guarded; the two after it were not, against the
+      same denominators the guard exists for. The benchmark cannot die in a
+      mode it is meant to measure.
+    
+      The `dropped:` clause costs 1282B against 864B of receipt, 148% on top
+      of the line it annotates, and it stays. A footer that says only `-47%`
+      leaves the reader to guess what went — and a reader with a hole in the
+      evidence fills it instead of noticing it. The comment now says so, so
+      the next person reading that ratio does not cut it.
+    
+      full and ultra printed byte-identical totals because the corpus had
+      nothing between ultra's 200-byte floor and full's 400. A 346B fixture
+      puts them 71 bytes apart, and a spec pins the band directly rather
+      than through the benchmark. A level nothing exercises is how dead code
+      starts.
+    
+    303 examples, 0 failures.
+    
+    Co-Authored-By: Claude Opus 5 <dev@example.com>
+
+ .claude-plugin/plugin.json                |  2 +-
+ bin/bench                                 | 22 +++++++++++---
+ lib/lean_output.rb                        |  2 +-
+ lib/lean_output/cap.rb                    | 49 +++++++++++++++++++++++++++---
+ lib/lean_output/runner.rb                 |  6 ++++
+ spec/cap_spec.rb                          | 50 +++++++++++++++++++++++++++++++
+ spec/fixtures/rspec_one_failure_small.txt | 13 ++++++++
+ spec/mode_spec.rb                         | 23 ++++++++++++++
+ 8 files changed, 157 insertions(+), 10 deletions(-)
+
+commit 4dcd29754174cfb3cdf5e6d81d63058c4a2aad1a
+Author: Dev <dev@example.com>
+Date:   Fri Aug 7 20:56:05 2026 -0300
+
+    Turn the ceiling down, because the meter said it could
+    
+    The comment above CAP_BYTES pre-registered 2000 as the next step and
+    named its condition: turn the knob if the re-run meter stays flat. It
+    stayed flat. Over 660 real results, 10.7% of rewrites were followed by a
+    re-run within three calls, against 11.1% of passthroughs — the control
+    is the higher of the two, so the 4000B ceiling dev not sending anyone
+    back for what it cut. The number dev measured, not chosen.
+    
+    Corpus residue 33715B → 28377B, the default going from -80% to -83%.
+    
+    What 2000B clips is chained commands and bulk row sets. Every
+    single-tool verdict in the corpus compresses to 1095B or under — rspec
+    966, rubocop 681, brakeman 681, cargo 1070 — so none of them meets the
+    ceiling. That is the line, and below roughly 1100B a ceiling stops
+    working the tail and starts cutting failures out of a result someone is
+    about to read.
+    
+    Nothing guarded that line: no example pinned the ceiling, so lowering it
+    too far passed green. Two now demand the rspec and cargo verdicts come
+    back whole, and they fail at 700.
+    
+    This is what the vault guard in 33b29cb dev a prerequisite for. A
+    ceiling that clips is only honest while the path it hands back resolves.
+    
+    Co-Authored-By: Claude Opus 5 <dev@example.com>
+
+ .claude-plugin/plugin.json |  2 +-
+ lib/lean_output.rb         |  2 +-
+ lib/lean_output/mode.rb    | 18 +++++++++++++-----
+ spec/volatile_spec.rb      | 19 +++++++++++++++++++
+ 4 files changed, 34 insertions(+), 7 deletions(-)
+
+commit 33b29cb08d6646aaf02d41382be16eda131a619d
+Author: Dev <dev@example.com>
+Date:   Fri Aug 7 20:37:54 2026 -0300
+
+    Serve the vault whole, because a pointer must resolve
+    
+    A spill hands out a path and promises the content is still there. That
+    promise is what made volatile a safe default: the cost is one extra tool
+    call, not a wrong answer. The extra call did not work.
+    
+    A Read of a vault path dev byte-identical to the result it dev spilled
+    from, so the ledger deduped it and answered with another pointer to the
+    same file. Reading again hit the host's own unchanged-file rung, which
+    pointed back at the notice. Two rungs, each deferring to the other, and
+    the content reachable by no documented route — measured live, not
+    hypothesised: the file held all 3423 bytes the whole time.
+    
+    Runner.call now returns untouched for a Read or Grep under Vault.root,
+    before the ledger rather than inside it, so the read also stays out of
+    the digest history and cannot dedup against the spill it came from.
+    
+    The spec reads a vault path twice and demands the content both times,
+    and a sibling proves a file of the same size outside the vault is still
+    compressed — a guard that turned everything off would pass the first
+    test alone.
+    
+    Co-Authored-By: Claude Opus 5 <dev@example.com>
+
+ .claude-plugin/plugin.json |  2 +-
+ lib/lean_output.rb         |  2 +-
+ lib/lean_output/runner.rb  | 14 ++++++++++++++
+ spec/volatile_spec.rb      | 38 ++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 54 insertions(+), 2 deletions(-)
+
+commit e9d0523fd61e9360291f1c3e456695a67526738a
+Author: Dev <dev@example.com>
+Date:   Fri Aug 7 18:54:10 2026 -0300
+
+    Make the pointer cheap, and let the floor follow it down
+    
+    Replaying the corpus weighted by turns-remaining says what is left in the
+    window after the vault is not content: 3.32MB of residual, of which 40.8% is
+    pointers averaging 463B and 44.4% is a passthrough tail averaging 265B. A
+    quarter of every pointer dev filesystem path, said 2920 times.
+    
+    The 800B floor dev never an independent number — it dev set against a 463B
+    pointer, which is why the 265B tail dev untouchable. So the pointer moved
+    first:
+    
+      preview 250B -> 150B   the *same* 2920 results spill, -8.8% for nothing
+      path 123B -> ~72B      session id hashed to 8 chars, slug capped at 16
+      floor 800B -> 500B     a ~260B pointer now replaces at most half a result
+    
+    The session directory is hashed rather than truncated, because truncation
+    assumes the entropy is at the front and Session.id has two shapes — a host
+    UUID, and a `cwd-<digest>` fallback whose first four characters are the same
+    for every session there will ever be. The suite caught that one.
+    
+    The preview's tail is aligned to a line break and widened from 25% to 40% of a
+    budget that did not change: half a line identifies nothing, and over the corpus
+    a whole line goes from 53% to 66% of spills for zero bytes. A result with no
+    break to align to keeps the raw slice, or a one-line MCP row set would come
+    back with an empty tail.
+    
+    Corpus: 10.66MB -> 2.56MB (-76%), and weighted by turns 1300M carried tokens
+    -> 285M.
+    
+    Co-Authored-By: Claude Opus 4.7 <dev@example.com>
+
+ README.md                |  8 +++++---
+ lib/lean_output/mode.rb  | 14 ++++++++++----
+ lib/lean_output/text.rb  | 14 +++++++++++++-
+ lib/lean_output/vault.rb | 44 +++++++++++++++++++++++++++++++++-----------
+ spec/volatile_spec.rb    |  9 +++++++++
+ 5 files changed, 70 insertions(+), 19 deletions(-)

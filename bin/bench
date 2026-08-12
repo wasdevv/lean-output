@@ -84,7 +84,48 @@ SCENARIOS = [
   { name: "rspec after a migration",   command: "bin/rails db:migrate && bundle exec rspec",
     preamble: "== 20260101 CreateThings: migrating ==\n-- create_table(:things)\n   -> 0.0031s\n" \
               "== 20260101 CreateThings: migrated (0.0032s) ==\n\n",
-    files: %w[rspec_failures.txt], target: 0.70, expect_locations: true }
+    files: %w[rspec_failures.txt], target: 0.70, expect_locations: true },
+
+  # Everything below was captured by running the command, never written from
+  # memory, and sanitised for a public repo. The roster came from 60 real
+  # transcripts: these are the families that actually spend the bytes in a
+  # session — search, listing, reading, git history, containers, processes —
+  # and none of them was represented here before. A corpus made only of test
+  # runners measures a session nobody has.
+  { name: "grep — many matches",       command: 'grep -rn "def self" lib/',        file: "grep_many.txt" },
+  { name: "grep — binary file",        command: 'grep -rn "lean" tmp/blob',        file: "grep_binary.txt" },
+  { name: "rg — scoped search",        command: 'rg -n "policy" lib/',             file: "rg_many.txt" },
+  { name: "ls -la — one directory",    command: "ls -la lib/lean_output/",         file: "ls_long.txt" },
+  { name: "ls -R — a whole tree",      command: "ls -R spec/",                     file: "ls_recursive.txt" },
+  { name: "find — every ruby file",    command: 'find . -name "*.rb"',             file: "find_many.txt" },
+  { name: "cat — a source file",       command: "cat lib/lean_output/mode.rb",     file: "cat_source.txt" },
+  { name: "cat — a json file",         command: "cat .claude-plugin/plugin.json",  file: "cat_json.txt" },
+  { name: "wc -l — a few files",       command: "wc -l lib/lean_output/*.rb",      file: "wc_lines.txt" },
+  { name: "git log — oneline, 40",     command: "git log --oneline -40",           file: "git_log_oneline.txt" },
+  { name: "git log — full bodies",     command: "git log -6",                      file: "git_log_full.txt" },
+  { name: "git log — with stat",       command: "git log --stat -4",               file: "git_log_stat.txt" },
+  { name: "git status — dirty tree",   command: "git status",                      file: "git_status_dirty.txt" },
+  { name: "git branch -a",             command: "git branch -a",                   file: "git_branch_all.txt" },
+  { name: "docker ps -a",              command: "docker ps -a",                    file: "docker_ps.txt" },
+  { name: "docker images",             command: "docker images",                   file: "docker_images.txt" },
+  { name: "ps aux",                    command: "ps aux",                          file: "ps_aux.txt" },
+  { name: "du -ah — two trees",        command: "du -ah lib spec",                 file: "du_tree.txt" },
+  { name: "ruby -e — a print loop",    command: "ruby -e 'puts RUBY_DESCRIPTION'", file: "ruby_loop.txt" },
+  { name: "npm ls -g",                 command: "npm ls -g --depth=0",             file: "npm_ls.txt" },
+  { name: "curl — a json api",         command: "curl -s https://api.github.com/repos/rails/rails",
+    file: "curl_json.txt" },
+  { name: "sed -n — a page of source", command: "sed -n '1,60p' lib/lean_output/runner.rb",
+    file: "sed_stream.txt" },
+  { name: "awk — a line report",       command: "awk '{print NR}' lib/lean_output/vault.rb",
+    file: "awk_report.txt" },
+
+  # `cd path && real-command` was the single largest shape in those transcripts,
+  # 293kB over 331 calls, and until this branch the ceiling could not see past
+  # the `cd`. It belongs in the corpus so it stays visible.
+  { name: "grep behind a cd prefix",   command: 'cd /home/dev/app && grep -rn "def self" lib/',
+    file: "grep_many.txt" },
+  { name: "rspec behind an env prefix", command: "env -u BUNDLE_LOCKFILE bundle exec rspec",
+    file: "rspec_failures.txt" }
 ].freeze
 
 # Output that must never be rewritten: either the compressor cannot rebuild it,

@@ -85,4 +85,27 @@ RSpec.describe LeanOutput::Mode do
       expect(described_class::DESCRIPTION.keys).to match_array(described_class::LEVELS)
     end
   end
+
+  describe 'the floor that separates ultra from full' do
+    def rewrite(level, output)
+      ENV['LEAN_OUTPUT_MODE'] = level
+      LeanOutput::Runner.call(
+        'session_id' => "floor-#{level}", 'tool_name' => 'Bash',
+        'tool_input' => { 'command' => 'bundle exec rspec' },
+        'tool_response' => { 'stdout' => output, 'stderr' => '' }
+      )&.dig('hookSpecificOutput', 'updatedToolOutput', 'stdout')
+    end
+
+    # ultra's floor is 200 bytes and full's is 400, so a result between them is
+    # the only place the two levels can disagree. Without one the corpus prints
+    # identical totals for both and the table reads as "these are the same
+    # thing" — which is how a level stops being exercised without being deleted.
+    it 'rewrites a result in the band under ultra but not under full' do
+      output = File.read('spec/fixtures/rspec_one_failure_small.txt')
+      expect(output.bytesize).to be_between(200, 400)
+
+      expect(rewrite('full', output)).to be_nil
+      expect(rewrite('ultra', output)).not_to be_nil
+    end
+  end
 end

@@ -39,6 +39,11 @@ SCENARIOS = [
   { name: "rspec — 3 failures",        command: "bundle exec rspec",   file: "rspec_failures.txt",       must_hit_target: true, expect_locations: true },
   { name: "rspec — 3 failures (ANSI)", command: "bundle exec rspec",   file: "rspec_failures_ansi.txt",  must_hit_target: true, expect_locations: true },
   { name: "rspec — all passing",       command: "bundle exec rspec",   file: "rspec_passing.txt" },
+  # 346B, between ultra's 200 floor and full's 400. Without a fixture in this
+  # band the two modes print byte-identical totals and the table says they are
+  # the same thing, which is how a level stops being exercised and starts being
+  # dead code nobody noticed.
+  { name: "rspec — one failure, small", command: "bundle exec rspec",  file: "rspec_one_failure_small.txt" },
   { name: "rubocop — 13 offenses",     command: "bundle exec rubocop", file: "rubocop_offenses.txt",     expect_locations: true },
   { name: "rubocop — offenses (ANSI)", command: "bundle exec rubocop", file: "rubocop_offenses_ansi.txt", expect_locations: true },
   { name: "rubocop — clean run",       command: "bundle exec rubocop", file: "rubocop_clean.txt" },
@@ -555,13 +560,22 @@ puts markdown ? "## 4. Recency window\n\n" : "== 4. recency window ==\n\n"
 table(markdown, ["Window", "References", "Repeats available", "Bytes withheld"],
       window_rows.map { |window, hits, total, withheld| [window.to_s, hits.to_s, total.to_s, withheld.to_s] })
 
-footer_share = footer_saved.zero? ? 0.0 : footer_bytes.to_f / footer_saved
+# A footer nobody wrote divides by zero, and NaN.round raises rather than
+# printing, so the benchmark dies inside the one mode whose whole point is to
+# emit no footer. `off` is a level this file measures; it cannot be a level this
+# file crashes on. The first of the three divisions below was already guarded —
+# the two after it were not, against the same two denominators the guard exists
+# for.
+def share(part, whole)
+  whole.zero? ? 0.0 : part.to_f / whole
+end
+
 puts markdown ? "## 5. Footer cost\n\n" : "== 5. footer cost ==\n\n"
 puts "#{rows.count { |row| row[2] }} rewrites carry #{footer_bytes} bytes of receipt " \
-     "against #{footer_saved} bytes saved (#{(footer_share * 100).round(2)}% of the win)."
+     "against #{footer_saved} bytes saved (#{(share(footer_bytes, footer_saved) * 100).round(2)}% of the win)."
 puts "Naming what was dropped adds #{naming_bytes} bytes on top " \
-     "(#{(naming_bytes.to_f / footer_saved * 100).round(2)}% of the win, " \
-     "#{(naming_bytes.to_f / footer_bytes * 100).round}% on top of the receipt itself)."
+     "(#{(share(naming_bytes, footer_saved) * 100).round(2)}% of the win, " \
+     "#{(share(naming_bytes, footer_bytes) * 100).round}% on top of the receipt itself)."
 puts
 
 if markdown

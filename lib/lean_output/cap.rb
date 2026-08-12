@@ -21,12 +21,32 @@ module LeanOutput
     # the script, and a ceiling on an unknown shape is a guess.
     CAPPABLE = %w[grep rg egrep fgrep ls find cat].freeze
 
+    # `git` is not one command, and the roster cannot treat it as one. Measured
+    # over 40 real transcripts, `git log` was the largest uncapped subcommand at
+    # 69kB across 50 calls and `git status` added 34kB more — neither has a
+    # compressor behind it. `git diff` and `git show` do, and a ceiling in front
+    # of that compressor would hand it a truncated diff, costing hunks and paths
+    # it would otherwise have kept. Capping the binary would have been a net
+    # loss on the two subcommands that were already handled.
+    CAPPABLE_SUB = { 'git' => %w[log status].freeze }.freeze
+
     # Refused anywhere in the string, inside quotes or not. Deciding whether a
     # `|` is quoted means parsing the shell, and a parser that is wrong once
     # corrupts a command the user is about to run. Over-refusing costs only a
     # rewrite that was optional to begin with — `grep "foo|bar"` goes through
     # untouched, which is the right way to be wrong here.
     UNSAFE = /[|><;&$`(){}\n]/
+
+    # `cd path && real-command` is the shape most Bash calls take here, and
+    # taking the first word blinds the ceiling to every one of them: the command
+    # that produces the bytes is the one after the `&&`. Measured over 40 real
+    # transcripts, `cd` led every other head word at 293kB across 331 calls,
+    # entirely uncapped. corpus.rb already strips this prefix before it
+    # classifies, so the two ends disagreed about what the command even was.
+    #
+    # `\S+` holds it to a single unquoted argument. A path with a space or a
+    # quote does not match, falls through, and is refused exactly as before.
+    PREFIX = /\A(?:cd|env)\s+\S+\s*&&\s*/
 
     # A ceiling the caller set already. Anything piped is refused above, so the
     # only survivor is grep's own counter.
@@ -63,13 +83,34 @@ module LeanOutput
       return nil unless policy && !policy[:lossless_only]
 
       stripped = command.strip
-      return nil if stripped.empty? || stripped.match?(UNSAFE) || stripped.match?(LIMITED)
-      return nil unless CAPPABLE.include?(head_word(stripped))
+      prefix, rest = split_prefix(stripped)
+      return nil if rest.empty? || rest.match?(UNSAFE) || rest.match?(LIMITED)
+      return nil unless cappable?(rest)
 
       # Appending after a metacharacter-free command cannot land inside a quote
-      # or change how the words before it parse.
-      "#{stripped} | head -n #{LINES}"
+      # or change how the words before it parse. The pipe binds tighter than the
+      # `&&`, so it still applies to the command that was classified, not to the
+      # `cd` in front of it.
+      "#{prefix}#{rest} | head -n #{LINES}"
     end
+
+    # A subcommand is read at a fixed position, so `git -C path log` does not
+    # match and is refused. Over-refusing costs a long result; guessing where
+    # the subcommand starts costs a ceiling on the wrong command.
+    def self.cappable?(command)
+      word = head_word(command)
+      subs = CAPPABLE_SUB[word] or return CAPPABLE.include?(word)
+
+      subs.include?(command.split(/\s+/)[1].to_s)
+    end
+    private_class_method :cappable?
+
+    def self.split_prefix(command)
+      match = PREFIX.match(command) or return ['', command]
+
+      [match[0], match.post_match]
+    end
+    private_class_method :split_prefix
 
     def self.head_word(command)
       command.split(/\s+/).first.to_s.split('/').last

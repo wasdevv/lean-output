@@ -85,4 +85,54 @@ RSpec.describe LeanOutput::Cap do
       ENV.delete('LEAN_OUTPUT_MODE')
     end
   end
+
+  describe 'a command behind a cd or env prefix' do
+    it 'caps the command after the prefix, not the prefix' do
+      expect(capped_command('cd /tmp/x && grep -rn "def " app/'))
+        .to eq('cd /tmp/x && grep -rn "def " app/ | head -n 200')
+    end
+
+    it 'reaches through an env prefix too' do
+      expect(capped_command('env FOO=1 && ls -la')).to eq('env FOO=1 && ls -la | head -n 200')
+    end
+
+    # The prefix is allowed past UNSAFE; everything after it is not. A second
+    # `&&`, a pipe or a subshell in the real command still means refuse.
+    it 'still refuses a metacharacter in the command itself' do
+      expect(capped_command('cd /tmp/x && grep foo app/ && rm -rf /')).to be_nil
+      expect(capped_command('cd /tmp/x && grep foo app/ | wc -l')).to be_nil
+    end
+
+    # `\S+` matches one unquoted token, so a quoted path never becomes a prefix
+    # and the command is refused whole rather than split at the wrong place.
+    it 'refuses a quoted path instead of guessing where the prefix ends' do
+      expect(capped_command('cd "/tmp/my dir" && grep foo app/')).to be_nil
+    end
+
+    it 'refuses a prefix with nothing after it' do
+      expect(capped_command('cd /tmp/x &&')).to be_nil
+    end
+
+    it 'leaves a command outside the roster alone behind a prefix' do
+      expect(capped_command('cd /tmp/x && bundle exec rspec')).to be_nil
+    end
+  end
+
+  describe 'git, which is not one command' do
+    it 'caps the subcommands with no compressor behind them' do
+      expect(capped_command('git log --oneline')).to eq('git log --oneline | head -n 200')
+      expect(capped_command('git status')).to eq('git status | head -n 200')
+    end
+
+    # A ceiling in front of the git_diff compressor hands it a truncated diff,
+    # so it loses hunks and paths it would otherwise keep. Worse than no cap.
+    it 'leaves diff and show to the compressor' do
+      expect(capped_command('git diff HEAD~1')).to be_nil
+      expect(capped_command('git show abc123')).to be_nil
+    end
+
+    it 'refuses a subcommand it cannot read at a fixed position' do
+      expect(capped_command('git -C /tmp/x log')).to be_nil
+    end
+  end
 end

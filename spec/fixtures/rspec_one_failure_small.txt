@@ -1,0 +1,13 @@
+
+Randomized with seed 11904
+....F...
+
+Failures:
+
+  1) Cap caps a listing behind a cd prefix
+     Failure/Error: expect(capped).to eq("ls | head -n 200")
+     # ./spec/cap_spec.rb:31:in 'block (2 levels) in <top (required)>'
+     # ./spec/support/vcr.rb:20:in 'block (3 levels) in <top (required)>'
+
+Finished in 0.31 seconds
+8 examples, 1 failure

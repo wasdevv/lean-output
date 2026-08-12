@@ -240,6 +240,12 @@ module LeanOutput
     end
     private_class_method :from_hash
 
+    # The `dropped:` clause measures badly and reads as pure overhead: across the
+    # corpus it costs 1282B against 864B of receipt, 148% on top of the line it
+    # annotates. Keep it anyway. A footer that says only `-47%` tells the reader
+    # bytes are gone and leaves them to guess which — and a reader with a hole in
+    # the evidence fills it rather than noticing it. Naming `passing examples` is
+    # what makes not going to fetch them a decision instead of an assumption.
     def self.footer(before, after, discards = [])
       saved = (100.0 * (before - after) / before).round
       gone = discards.empty? ? '' : " — dropped: #{discards.join(', ')}"

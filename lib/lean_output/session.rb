@@ -18,7 +18,14 @@ module LeanOutput
   # forgets and a repeated output is sent twice, which is exactly the behaviour
   # before this file existed.
   class Session
-    VERSION = 1
+    # Bumped because field 3 of a `seen` entry changed meaning rather than
+    # shape: it used to hold the original size and now holds the delivered one.
+    # Nothing would raise on an older file — it would simply read every entry as
+    # "delivered whole", which is exactly the claim this release exists to stop
+    # making. A version the reader rejects is the only way to tell the two apart,
+    # and the file is a cache, so the cost of discarding it is one session
+    # without dedup.
+    VERSION = 2
     # Entries are pruned to the most recent N. The window in Ledger already
     # decides what is too old to reference; this is only so the file cannot grow
     # without bound in a session that runs for hours.
@@ -88,10 +95,14 @@ module LeanOutput
       data['bytes'] = bytes + size.to_i
     end
 
-    # [seq, bytes-at-the-time, label, size, vault path] — positional to keep the
-    # file small, since it is rewritten on every single tool call. The path is
-    # nil when that occurrence reached the model whole, and only then may a
-    # reference to it claim the model has the bytes.
+    # [seq, bytes-at-the-time, label, delivered size, vault path] — positional to
+    # keep the file small, since it is rewritten on every single tool call.
+    #
+    # `size` is what the model received, not what arrived at the hook. Those are
+    # the same number only for a passthrough, and the difference is exactly what
+    # tells a later reference whether the bytes are in the window. It held the
+    # original size until 1.2.0 and nothing ever read it — a later occurrence
+    # has the original in hand and can measure it.
     def lookup(digest)
       entry = data['seen'][digest]
       return nil unless entry.is_a?(Array) && entry.size >= 4
@@ -99,12 +110,21 @@ module LeanOutput
       { seq: entry[0], bytes: entry[1], label: entry[2], size: entry[3], path: entry[4] }
     end
 
-    # A repeat of something already spilled is remembered without a path of its
-    # own — it was answered with a reference, not a file — so the path carries
-    # forward from the occurrence that did write one. The digest guarantees the
-    # bytes are the same, so the old file is still the right file.
+    # An entry records the *best* the model has been given of these bytes, not
+    # the most recent, and both carried fields are that same idea. A repeat is
+    # answered with a reference, so it delivers a couple of hundred bytes and
+    # writes no file — but the occurrence it points at is still in the window,
+    # and taking the smaller number would make the third occurrence conclude the
+    # model never had the result and re-send it. Measured on `git status` four
+    # times: 2 references instead of 3, alternating full sends with pointers.
+    #
+    # The digest guarantees the bytes are identical, so an older delivery and an
+    # older file are both still the right answer for this content.
     def remember(digest, label, size, path = nil)
-      data['seen'][digest] = [seq, bytes, label, size, path || lookup(digest)&.dig(:path)]
+      previous = lookup(digest)
+      data['seen'][digest] = [seq, bytes, label,
+                              [size.to_i, previous ? previous[:size].to_i : 0].max,
+                              path || previous&.dig(:path)]
       prune
     end
 

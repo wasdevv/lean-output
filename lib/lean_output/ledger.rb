@@ -46,19 +46,11 @@ module LeanOutput
 
     # nil means "not a repeat, or too old to point at" — in both cases the
     # caller carries on to the compressors, which is the safe direction.
-    def self.reference(session, output, _label, window: window_bytes)
+    def self.reference(session, output, window: window_bytes)
       previous = session.lookup(digest(output)) or return nil
       distance = session.bytes - previous[:bytes].to_i
       return nil if distance > window
-      # A carried path is the one pointer in this plugin that can outlive what
-      # it names: the vault evicts whole session directories past SESSIONS and
-      # whole files past KEEP, and neither touches the `seen` entry quoting the
-      # path — while a repeat refreshes that entry's recency without writing a
-      # file. Returning nil hands the result to the vault, which spills it again
-      # and hands out a live path; the alternative is saying "withheld" about
-      # bytes that are now nowhere.
-      return nil if previous[:path] && !File.exist?(previous[:path])
-
+      return nil unless recoverable?(previous, output)
       # The entry was written after its own call advanced the counter, and this
       # call has not advanced it yet, so the immediately preceding call sits at a
       # difference of zero. +1 makes the reference say "1 tool call back".
@@ -66,11 +58,37 @@ module LeanOutput
       "#{marker(previous, calls, output)}\n#{head(output)}"
     end
 
-    # "withheld" is a claim about the model's context, and it is only true if the
-    # earlier occurrence actually arrived whole. When that one was itself spilled
-    # or clipped, the model holds a pointer, not the bytes — saying "withheld"
-    # there tells it to answer from a file it never read. So a remembered vault
-    # path replaces the claim with the way out of it, at the cost of one path.
+    # A reference is only ever worth making if the thing it points back at is
+    # still reachable. There are exactly two ways it can be, and this is the
+    # whole rule:
+    #
+    #   - the earlier occurrence reached the model verbatim, so the bytes are in
+    #     the window and "withheld" is true;
+    #   - or it did not, and a file holds what the model did not get.
+    #
+    # Anything else is a pointer into nothing. A compressed result that fit
+    # under the ceiling is the common case — the model got a distilled summary,
+    # nothing went to disk, and the old wording still claimed the raw lines were
+    # "withheld". Declining sends it back down the ladder, where the same
+    # compressor claims it again and the model gets the same distilled failures
+    # a second time: measured on rspec_failures.txt, 966B against the 135B the
+    # reference would have cost. That 831B is the whole price of the fix, and it
+    # is the same at every level — the vault never takes these, because a
+    # compressor claimed them.
+    #
+    # The file check belongs here too, because a path is the one pointer that
+    # can outlive what it names: the vault evicts whole session directories past
+    # SESSIONS and whole files past KEEP, and neither touches the `seen` entry
+    # quoting the path — while a repeat refreshes that entry's recency without
+    # writing a file.
+    def self.recoverable?(previous, output)
+      return File.exist?(previous[:path]) if previous[:path]
+
+      previous[:size].to_i >= output.bytesize
+    end
+    private_class_method :recoverable?
+
+    # Reached only when `recoverable?` said yes, so both arms are true claims.
     def self.marker(previous, calls, output)
       head = "[lean-output] byte-identical to #{previous[:label]} from #{plural(calls)} back — " \
              "#{Text.human(output.bytesize)}, #{output.lines.size} lines"

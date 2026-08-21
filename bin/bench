@@ -239,10 +239,25 @@ def unclaimed(scenario)
   [scenario[:preamble], *Array(scenario[:preserve]).map { |name| fixture(name) }].compact
 end
 
+# A pointer is not a loss. Since the vault became the default, most results come
+# back as two ends and a path, so a fidelity check reading only the returned text
+# calls every `file:line` behind that path missing — and this benchmark went red
+# for it, which is worse than useless: a red run nobody can distinguish from a
+# regression stops being evidence at all.
+#
+# So the check follows the pointer, exactly as the model is told to. What it must
+# never do is count those bytes as delivered — `reduction` is still measured on
+# the returned text alone, because the cost of a pointer is what the model paid.
+def resolved(text)
+  path = text[/full text at (\S+)/, 1]
+  path && File.exist?(path) ? "#{text}\n#{File.read(path)}" : text
+end
+
 def lost(original, compressed)
+  reachable = resolved(compressed)
   extracted = all_locations(original)
   missing = extracted.reject do |loc|
-    loc.split(" ").all? { |part| compressed.include?(part) }
+    loc.split(" ").all? { |part| reachable.include?(part) }
   end
   [extracted, missing]
 end
@@ -307,7 +322,7 @@ SCENARIOS.each_with_index do |scenario, index|
     fail!("NO LOCATIONS EXTRACTED from #{label}: the invariant is vacuous here")
   end
 
-  dropped = unclaimed(scenario).reject { |text| compressed.include?(text) }
+  dropped = unclaimed(scenario).reject { |text| resolved(compressed).include?(text) }
   fail!("LOST UNCLAIMED OUTPUT in #{label}: #{dropped.size} block(s) no compressor owned") unless dropped.empty?
 
   target = scenario[:target] || (scenario[:must_hit_target] ? TARGET : nil)
@@ -340,6 +355,14 @@ NEGATIVE.each_with_index do |scenario, index|
   # stays quiet even when it has the digest in hand.
   LeanOutput::Runner.call(payload_for(scenario, original, session)) if scenario[:repeat]
   result = LeanOutput::Runner.call(payload_for(scenario, original, session))
+
+  # What these scenarios forbid is a *rewrite of the content*, and the vault is
+  # not one: it takes only what every compressor declined, and it destroys
+  # nothing — so a spill pointer is itself the proof that nothing claimed this.
+  # Reading a bare non-nil as failure was right until the vault became the
+  # default, and since then it has failed all seven of these on a plugin that
+  # was behaving correctly.
+  next if result && updated(result).to_s.include?("middle withheld")
 
   fail!("MUST NOT COMPRESS — #{scenario[:name]}: #{scenario[:why]}") if result
 end

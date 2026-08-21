@@ -1,6 +1,8 @@
 # lean-output
 
-**A Claude Code plugin that compresses RSpec, RuboCop, Brakeman, `git diff`, cargo and `grep` outputs before they reach the model — fewer tokens, zero lost failures.**
+**A Claude Code plugin that keeps long tool output out of your context window — it spills the big results to disk and hands the model a pointer, withholds what the context already holds, and compresses RSpec, RuboCop, Brakeman, `git diff`, cargo and `grep` on the way past. Fewer tokens, zero lost failures.**
+
+The compressors came first and are the smallest part of the win: measured over 94 real transcripts, the pointer accounts for **93%** of the bytes saved and rung 7 for **1.6%**. What follows is in that order — cheapest rung first, compressors last.
 
 Test suites are chatty. A single failing RSpec run ships progress dots, seeds, profiling tables, SimpleCov reports and gem backtraces into your context window — thousands of tokens the model doesn't need. lean-output rewrites those outputs on the fly via a `PostToolUse` hook, keeping **every failure, message and `file:line`** and dropping everything else.
 
@@ -85,7 +87,7 @@ What is left is no longer content, it is pointer: 3824 pointers averaging 305 B.
 
 Only what no compressor claimed is offered to it. A compressed result is distilled signal — putting *that* behind a pointer would move the failures someone is about to read one tool call further away, while the bytes it replaced are already gone.
 
-Behind the vault sits a hard 4 kB ceiling, and it is the one place here that cuts. It applies only to a rewrite that came out enormous anyway — raw output that big was spilled a rung earlier — which means it fires almost exclusively on compressed results, exactly the ones the vault declined. So it stores the original before it cuts: what left the context window is still on disk, at every rung without exception.
+Behind the vault sits a hard 2 kB ceiling, and it is the one place here that cuts. It applies only to a rewrite that came out enormous anyway — raw output that big was spilled a rung earlier — which means it fires almost exclusively on compressed results, exactly the ones the vault declined. So it stores the original before it cuts: what left the context window is still on disk, at every rung without exception.
 
 `safe` is not a vibe: `lossless?` is already a first-class idea here — grep regroups and keeps every line, everything else throws a backtrace or a banner away on purpose — so "only rewrites that discard nothing" is a guarantee the code can actually make.
 
@@ -106,23 +108,24 @@ Measured on real outputs captured from a Rails 8 app (`bin/bench`), in five sect
 | brakeman — 5 warnings | 3041 → 681 | 760 → 167 | **-78%** |
 | brakeman — warnings (ANSI) | 3811 → 681 | 953 → 167 | **-82%** |
 | brakeman — clean scan | 1922 → 116 | 481 → 28 | **-94%** |
-| git show — vendored deps | 62600 → 9738 | 15642 → 2425 | **-84%** |
-| git show — no generated | 4886 | 1215 | passthrough² |
+| git show — vendored deps | 62600 → 2100 | 15642 → 515 | **-97%**³ |
+| git show — no generated | 4886 → 318 | 1215 → 79 | **-93%**³ |
 | cargo — 4 errors | 1513 → 879 | 378 → 218 | **-42%** |
 | cargo — 4 errors (ANSI) | 2390 → 879 | 598 → 218 | **-63%** |
 | cargo — 7 warnings | 1698 → 1070 | 425 → 267 | **-37%** |
 | cargo — warnings (ANSI) | 2575 → 1070 | 644 → 267 | **-58%** |
 | cargo — clean build | 120 | 30 | passthrough² |
-| grep -rn — repeated paths | 3585 → 2578 | 896 → 644 | **-28%** |
-| chain — rspec+rubocop+brakeman | 9775 → 2233 | 2444 → 554 | **-77%** |
+| grep -rn — repeated paths | 3585 → 2144 | 896 → 534 | **-40%** |
+| chain — rspec+rubocop+brakeman | 9775 → 2187 | 2444 → 543 | **-78%** |
 | chain — cargo+rspec | 6124 → 1799 | 1531 → 448 | **-71%** |
 | chain — one segment, two tools | 6733 → 1600 | 1683 → 399 | **-76%** |
 | chain — hidden by quoting | 6733 → 1600 | 1683 → 399 | **-76%** |
-| chain — rspec + plain diff | 9497 → 5880 | 2368 → 1462 | **-38%** |
+| chain — rspec + plain diff | 9497 → 2188 | 2368 → 544 | **-77%** |
 | rspec after a migration | 4737 → 1095 | 1184 → 272 | **-77%** |
 
 ¹ estimate (chars / 4); run `ANTHROPIC_API_KEY=... bin/bench` for exact counts via the `count_tokens` API.
 ² Untouched: small outputs are never rewritten.
+³ The pointer did this, not the rung the table is about. Every number here is measured end to end at the default level, where anything no compressor claims goes to the vault whole and comes back as its two ends and a path — so a row marked ³ is one the compressors (or, in the ledger table, the ledger) declined outright. The reduction is real and nothing was destroyed, but crediting it to rung 7 or rung 2 would be reading the wrong rung's receipt. It is also why the two rows with **0 references** still shrink by 93% and 99%.
 
 Cargo compresses less than the Ruby tools, and that is the correct outcome: rustc diagnostics are mostly signal already. What goes away is the ASCII art — the echoed source line, the caret runs, the suggestion diffs — while every `file:line:col` and every `note:`/`help:` stays. On colored output the win doubles, because escape sequences are a third of the bytes.
 
@@ -134,26 +137,29 @@ Simulated sessions, each one a sequence of tool calls against a single ledger. `
 
 | Simulated session | Calls | References | Bytes | Reduction |
 |---|---|---|---|---|
-| re-read the same file twice | 2 | 1 | 9220 → 4737 | **-49%** |
-| re-read after working elsewhere | 4 | 1 | 14383 → 9901 | **-31%** |
-| file changed by one byte in between | 2 | 0 | 9221 → 9221 | -0% |
-| alternating between two files | 4 | 2 | 13464 → 6994 | **-48%** |
-| same bytes under a different path | 2 | 1 | 9220 → 4739 | **-49%** |
-| the agent runs `git status` four times | 4 | 3 | 19544 → 5456 | **-72%** |
-| an MCP result the agent asks for twice | 2 | 1 | 16900 → 2657 | **-84%** |
-| a long session with four repeats | 10 | 4 | 88757 → 78041 | **-12%** |
-| beyond the recency window | 3 | 0 | 71820 → 71820 | -0% |
+| re-read the same file twice | 2 | 1 | 9220 → 551 | **-94%** |
+| re-read after working elsewhere | 4 | 1 | 14383 → 1194 | **-92%** |
+| file changed by one byte in between | 2 | 0 | 9221 → 640 | **-93%**³ |
+| alternating between two files | 4 | 2 | 13464 → 1101 | **-92%** |
+| same bytes under a different path | 2 | 1 | 9220 → 557 | **-94%** |
+| the agent runs `git status` four times | 4 | 3 | 19544 → 1191 | **-94%** |
+| an MCP result the agent asks for twice | 2 | 1 | 16900 → 514 | **-97%** |
+| a long session with four repeats | 10 | 4 | 88757 → 2883 | **-97%** |
+| beyond the recency window | 3 | 0 | 71820 → 955 | **-99%**³ |
 
 ### 3. Levels over the same corpus
 
 | Mode | Rewrites | Bytes | Reduction | Refs | Sessions |
 |---|---|---|---|---|---|
-| `off` | 0/25 | 167669 → 167669 | -0% | 0 | -0% |
-| `safe` | 1/25 | 167669 → 166662 | -1% | 13 | -21% |
-| `full` | 22/25 | 167669 → 45527 | **-73%** | 13 | **-23%** |
-| `ultra` | 22/25 | 167669 → 45527 | **-73%** | 13 | **-23%** |
+| `off` | 0/23 | 150014 → 150014 | -0% | 0 | -0% |
+| `safe` | 1/23 | 150014 → 149007 | -1% | 13 | -21% |
+| `full` | 20/23 | 150014 → 40431 | **-73%** | 13 | -21% |
+| `ultra` | 20/23 | 150014 → 40431 | **-73%** | 13 | -21% |
+| `volatile` | 21/23 | 150014 → 24053 | **-84%** | 13 | **-96%** |
 
 `safe` scores -1% on the compressor corpus and -21% on the session corpus, which is the honest shape of it: almost all of its win is the ledger, because withholding bytes the model already has discards nothing by construction.
+
+`volatile` is the default and the only row where the session corpus collapses — **-96%** against `full`'s -21% — because it is the only level that stops arguing about which bytes are redundant and puts the whole result on disk. That gap is the entire case for the vault being the default rather than an opt-in.
 
 `full` and `ultra` tie here, and the bench says so rather than hiding it. The two differ at the byte floor (200–400 B) and at the margin a lossy rewrite has to clear, and **no fixture lands in that band** — fixtures are chosen to be interesting, and an interesting output is a long one. A real session is where `ultra` pays, and `/lean` is what says whether it did.
 
@@ -164,18 +170,18 @@ One synthetic session whose five repeats sit at growing distances, replayed once
 | Window | References found | Repeats available | Bytes withheld |
 |---|---|---|---|
 | 5 kB | 0 | 5 | 0 |
-| 10 kB | 1 | 5 | 4491 |
-| 25 kB | 3 | 5 | 13473 |
-| 50 kB | 3 | 5 | 13473 |
-| 100 kB | 4 | 5 | 17964 |
-| 250 kB | 5 | 5 | 22454 |
-| 500 kB | 5 | 5 | 22454 |
+| 10 kB | 1 | 5 | 4385 |
+| 25 kB | 3 | 5 | 13155 |
+| 50 kB | 3 | 5 | 13155 |
+| 100 kB | 4 | 5 | 17540 |
+| 250 kB | 5 | 5 | 21923 |
+| 500 kB | 5 | 5 | 21923 |
 
 The curve flattens by 250 kB, which is where the default sits: past that point a wider window buys no more references and only lengthens the reach of a pointer a compaction could strand.
 
 ### 5. What the receipt costs
 
-22 rewrites carry **827 bytes** of footer against **122,142 bytes** saved — 0.68% of the win. Naming what each one discarded adds **1244 bytes** on top: 1.02% of the win, and 150% on top of the receipt itself. It also cost the headline rspec number a point, from -80% to -79%. That is the trade, priced: a summary that says only how much smaller it got asks to be trusted, one that names what is gone can be checked.
+21 rewrites carry **788 bytes** of footer against **125,961 bytes** saved — 0.63% of the win. Naming what each one discarded adds **1186 bytes** on top: 0.94% of the win, and 151% on top of the receipt itself. It also cost the headline rspec number a point, from -80% to -79%. That is the trade, priced: a summary that says only how much smaller it got asks to be trusted, one that names what is gone can be checked.
 
 ### Invariants
 

@@ -58,7 +58,12 @@ module LeanOutput
 
       session.advance(output.bytesize)
       if deduplicable?(tool, output, policy)
-        session.remember(Ledger.digest(output), Ledger.label(tool, payload), output.bytesize, path)
+        # What the model actually received, not what arrived here. A later
+        # reference has the original in hand — it is byte-identical by
+        # definition — so the original size is the one number it can always
+        # recompute, and the delivered size is the one it cannot.
+        delivered = (rewritten || output).bytesize
+        session.remember(Ledger.digest(output), Ledger.label(tool, payload), delivered, path)
       end
       session.credit(output.bytesize, (rewritten || output).bytesize, hit: hit)
       session.observe(Ledger.label(tool, payload), rewritten: !rewritten.nil?)
@@ -71,7 +76,7 @@ module LeanOutput
     def self.decide(session, tool, payload, output, policy)
       label = Ledger.label(tool, payload)
       if deduplicable?(tool, output, policy)
-        reference = Ledger.reference(session, output, label)
+        reference = Ledger.reference(session, output)
         return [reference, true, nil] if reference && reference.bytesize < output.bytesize * policy[:ratio]
       end
 

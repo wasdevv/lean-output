@@ -370,29 +370,31 @@ end
 # ---------------------------------------------------------------- section 2
 
 def replay(simulation, session)
-  before = 0
-  after = 0
-  hits = 0
-
   with_env("LEAN_OUTPUT_WINDOW" => simulation[:window]) do
-    simulation[:steps].each do |tool, name, file, suffix|
-      body = "#{fixture(file)}#{suffix}"
-      scenario = tool == "Read" ? { tool: "Read", path: name } : { tool: tool, command: name }
-      scenario = { command: name } if tool == "Bash"
-      result = updated(LeanOutput::Runner.call(payload_for(scenario, body, session)))
+    steps = simulation[:steps].map { |step| replay_step(step, session, simulation[:name]) }
 
-      before += body.bytesize
-      after += (result || body).bytesize
-      next unless result&.include?("byte-identical to")
-
-      hits += 1
-      # The reference exists to be shorter. One that is not would be a rung that
-      # costs context to save context.
-      fail!("REFERENCE NOT SMALLER in #{simulation[:name]}") unless result.bytesize < body.bytesize
-    end
+    [steps.sum { |before, _, _| before }, steps.sum { |_, after, _| after },
+     steps.count { |_, _, hit| hit }]
   end
+end
 
-  [before, after, hits]
+# [bytes in, bytes out, was it a reference]. Bash is the odd one out on purpose:
+# it carries a command and no tool name, which is what the hook sees.
+def replay_step((tool, name, file, suffix), session, label)
+  body = "#{fixture(file)}#{suffix}"
+  scenario = case tool
+             when "Read" then { tool: "Read", path: name }
+             when "Bash" then { command: name }
+             else { tool: tool, command: name }
+             end
+  result = updated(LeanOutput::Runner.call(payload_for(scenario, body, session)))
+  hit = !result.nil? && result.include?("byte-identical to")
+
+  # The reference exists to be shorter. One that is not would be a rung that
+  # costs context to save context.
+  fail!("REFERENCE NOT SMALLER in #{label}") if hit && result.bytesize >= body.bytesize
+
+  [body.bytesize, (result || body).bytesize, hit]
 end
 
 ledger_rows = LEDGER_SESSIONS.each_with_index.map do |simulation, index|
@@ -508,18 +510,22 @@ end
 # ---------------------------------------------------------------- output
 
 def table(markdown, header, rows)
-  if markdown
-    puts "| #{header.join(" | ")} |"
-    puts "|#{(["---"] * header.size).join("|")}|"
-    rows.each { |row| puts "| #{row.join(" | ")} |" }
-  else
-    widths = header.each_index.map { |i| ([header[i], *rows.map { |r| r[i].to_s }].map(&:length)).max }
-    line = ->(cells) { puts cells.each_with_index.map { |cell, i| cell.to_s.ljust(widths[i]) }.join("  ").rstrip }
-    line.call(header)
-    line.call(widths.map { |w| "-" * w })
-    rows.each { |row| line.call(row) }
-  end
+  puts(markdown ? markdown_table(header, rows) : aligned_table(header, rows))
   puts
+end
+
+def markdown_table(header, rows)
+  ["| #{header.join(" | ")} |", "|#{(["---"] * header.size).join("|")}|",
+   *rows.map { |row| "| #{row.join(" | ")} |" }]
+end
+
+# Every column as wide as its widest cell, header included. The separator row
+# is built from the same widths, so it cannot drift out of step with them.
+def aligned_table(header, rows)
+  widths = header.each_index.map { |i| [header[i], *rows.map { |row| row[i].to_s }].map(&:length).max }
+  pad = ->(cells) { cells.each_with_index.map { |cell, i| cell.to_s.ljust(widths[i]) }.join("  ").rstrip }
+
+  [pad[header], pad[widths.map { |width| "-" * width }], *rows.map { |row| pad[row] }]
 end
 
 puts markdown ? "## 1. Compressors\n\n" : "\n== 1. compressors (rung 7) ==\n\n"

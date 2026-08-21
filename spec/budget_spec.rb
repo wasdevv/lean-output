@@ -80,6 +80,21 @@ RSpec.describe LeanOutput::Budget do
       expect(body.map(&:chomp).reject(&:empty?)).to all(match(/^line \d+$/))
     end
 
+    # A slice with no line break in it has no boundary to cut on, and the
+    # obvious one-expression forms of "trim to the last newline" return empty
+    # there — spending the whole budget to deliver nothing. A minified file or a
+    # single long row is exactly the input that reaches a byte ceiling.
+    it 'keeps both ends of a result that has no line breaks at all' do
+      single = 'x' * 5_000
+
+      clipped = described_class.clip(single, 400)
+
+      expect(clipped).to start_with('xxxx')
+      expect(clipped).to end_with('xxxx')
+      expect(clipped).to include('omitted from the middle')
+      expect(clipped.bytesize).to be <= 400
+    end
+
     it 'never returns invalid UTF-8 when the cut lands inside a codepoint' do
       accented = (1..200).map { |i| "linha #{i} — acentuação" }.join("\n")
 

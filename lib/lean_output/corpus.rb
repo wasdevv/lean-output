@@ -38,14 +38,12 @@ module LeanOutput
       return 'no tool results found — is the transcript root right?' if results.empty?
 
       groups = results.group_by(&:command).transform_values { |list| tally(list) }
-      total = groups.values.sum { |group| group[:bytes] }
-      lines = [format('%-20s %7s %9s %9s %8s', 'command', 'calls', 'MB', 'saved', 'unclaimed')]
-      groups.sort_by { |_, group| -(group[:bytes] - group[:saved]) }.first(rows).each do |name, group|
-        lines << row(name, group)
-      end
-      lines << ''
-      lines << summary(total, results)
-      lines.join("\n")
+      ranked = groups.sort_by { |_, group| -(group[:bytes] - group[:saved]) }.first(rows)
+
+      [format('%-20s %7s %9s %9s %8s', 'command', 'calls', 'MB', 'saved', 'unclaimed'),
+       *ranked.map { |name, group| row(name, group) },
+       '',
+       summary(groups.values.sum { |group| group[:bytes] }, results)].join("\n")
     end
 
     def self.tally(list)

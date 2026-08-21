@@ -43,19 +43,24 @@ module LeanOutput
         count = plain[/^Security Warnings: (\d+)$/, 1] or return nil
         errors = plain[/^Errors: (\d+)$/, 1].to_i
 
-        out = +"Brakeman: #{count} security warnings"
-        out << ", #{errors} errors" if errors.positive?
+        head = "Brakeman: #{count} security warnings#{", #{errors} errors" if errors.positive?}"
+        files = parse_warnings(plain).group_by { |warning| warning[:file] }
+                                     .map { |file, warnings| format_file(file, warnings) }
 
-        parse_warnings(plain).group_by { |w| w[:file] }.each do |file, warnings|
-          out << "\n\n#{file}"
-          warnings.sort_by { |w| w[:line] }.each do |w|
-            out << "\n  #{w[:line]} [#{w[:confidence]}] #{w[:category]}: #{w[:message]}"
-            out << " — #{w[:code]}" if w[:code]
-          end
+        "#{[head, *files].join("\n\n")}\n"
+      end
+
+      # Grouped by file and ordered by line, because that is the order someone
+      # fixes them in — brakeman itself reports by check.
+      def self.format_file(file, warnings)
+        lines = warnings.sort_by { |warning| warning[:line] }.map do |warning|
+          "  #{warning[:line]} [#{warning[:confidence]}] #{warning[:category]}: " \
+            "#{warning[:message]}#{" — #{warning[:code]}" if warning[:code]}"
         end
 
-        out << "\n"
+        [file, *lines].join("\n")
       end
+      private_class_method :format_file
 
       def self.parse_warnings(plain)
         section = plain[/^== Warnings ==\n(.*)/m, 1].to_s

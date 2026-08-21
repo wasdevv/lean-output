@@ -201,10 +201,21 @@ RSpec.describe 'the volatile level' do
 
     # The other half of the invariant: when the earlier occurrence really did
     # arrive whole, "withheld" is the true and much cheaper thing to say.
-    it 'still says withheld when the first occurrence was delivered' do
-      small = "line one\nline two\n#{'filler ' * 100}\n"
+    #
+    # The size is the whole example. It has to sit above `min_bytes` to be
+    # deduplicable at all and below `spill` so the vault declines it, and that
+    # band is the only way to reach the ledger with nothing on disk behind it.
+    # At `full`, where `spill` is nil, every size lands in the band and this
+    # asserts nothing — which is what it did before the size was pinned.
+    it 'still says withheld when the first occurrence was delivered whole' do
+      ENV['LEAN_OUTPUT_MODE'] = 'volatile'
+      small = "line one\nline two\n#{'filler ' * 40}\n"
+      expect(small.bytesize).to be_between(LeanOutput::Mode::POLICY['volatile'][:min_bytes],
+                                           LeanOutput::Mode::SPILL_BYTES)
+
+      text = nil
       2.times do
-        @text = LeanOutput::Runner.call(
+        text = LeanOutput::Runner.call(
           'session_id' => 'delivered-repeat', 'tool_name' => 'Read',
           'tool_input' => { 'file_path' => '/tmp/small.rb' },
           'tool_response' => { 'type' => 'text',
@@ -212,8 +223,23 @@ RSpec.describe 'the volatile level' do
         )&.dig('hookSpecificOutput', 'updatedToolOutput', 'file', 'content')
       end
 
-      expect(@text).to include('lines withheld')
-      expect(@text).not_to include('full text at')
+      expect(text).to include('lines withheld')
+      expect(text).not_to include('full text at')
+    end
+
+    # A pointer is the one thing here that can outlive what it names: the vault
+    # evicts by directory past SESSIONS and by file past KEEP, and a repeat
+    # refreshes the ledger entry without writing anything. Pointing at a deleted
+    # file is worse than not deduplicating at all, so the result goes back down
+    # the ladder and is spilled again.
+    it 'declines to reference a vault file that has been evicted' do
+      first = read_big
+      FileUtils.rm_f(vault_path(first))
+
+      second = read_big
+
+      expect(second).not_to include('byte-identical')
+      expect(File.read(vault_path(second))).to eq(long)
     end
   end
 

@@ -50,6 +50,14 @@ module LeanOutput
       previous = session.lookup(digest(output)) or return nil
       distance = session.bytes - previous[:bytes].to_i
       return nil if distance > window
+      # A carried path is the one pointer in this plugin that can outlive what
+      # it names: the vault evicts whole session directories past SESSIONS and
+      # whole files past KEEP, and neither touches the `seen` entry quoting the
+      # path — while a repeat refreshes that entry's recency without writing a
+      # file. Returning nil hands the result to the vault, which spills it again
+      # and hands out a live path; the alternative is saying "withheld" about
+      # bytes that are now nowhere.
+      return nil if previous[:path] && !File.exist?(previous[:path])
 
       # The entry was written after its own call advanced the counter, and this
       # call has not advanced it yet, so the immediately preceding call sits at a

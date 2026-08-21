@@ -58,9 +58,21 @@ module LeanOutput
       "#{marker(previous, calls, output)}\n#{head(output)}"
     end
 
+    # "withheld" is a claim about the model's context, and it is only true if the
+    # earlier occurrence actually arrived whole. When that one was itself spilled
+    # or clipped, the model holds a pointer, not the bytes — saying "withheld"
+    # there tells it to answer from a file it never read. So a remembered vault
+    # path replaces the claim with the way out of it, at the cost of one path.
     def self.marker(previous, calls, output)
-      "[lean-output] byte-identical to #{previous[:label]} from #{plural(calls)} back — " \
-        "#{Text.human(output.bytesize)}, #{output.lines.size} lines withheld"
+      head = "[lean-output] byte-identical to #{previous[:label]} from #{plural(calls)} back — " \
+             "#{Text.human(output.bytesize)}, #{output.lines.size} lines"
+      return "#{head} withheld" unless previous[:path]
+
+      # Worded like the vault's own notice and no longer: this is paid on every
+      # repeat of a spilled result, and the two extra facts a longer sentence
+      # would add — that the earlier one was a pointer too, and why — change
+      # nothing about what the reader does next.
+      "#{head}, full text at #{previous[:path]} (Read or grep it)"
     end
     private_class_method :marker
 

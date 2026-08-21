@@ -7,7 +7,7 @@
     {
       "name": "lean-output",
       "source": "./",
-      "description": "Compresses RSpec and RuboCop outputs before they reach the model — fewer tokens, zero lost failures."
+      "description": "Spills long tool results to disk and hands back a pointer, withholds results the context already holds, and compresses RSpec, RuboCop, Brakeman, git diff, cargo and grep output before it reaches the model — fewer tokens, zero lost failures."
     }
   ]
 }

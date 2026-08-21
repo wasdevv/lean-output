@@ -88,17 +88,23 @@ module LeanOutput
       data['bytes'] = bytes + size.to_i
     end
 
-    # [seq, bytes-at-the-time, label, size] — positional to keep the file small,
-    # since it is rewritten on every single tool call.
+    # [seq, bytes-at-the-time, label, size, vault path] — positional to keep the
+    # file small, since it is rewritten on every single tool call. The path is
+    # nil when that occurrence reached the model whole, and only then may a
+    # reference to it claim the model has the bytes.
     def lookup(digest)
       entry = data['seen'][digest]
-      return nil unless entry.is_a?(Array) && entry.size == 4
+      return nil unless entry.is_a?(Array) && entry.size >= 4
 
-      { seq: entry[0], bytes: entry[1], label: entry[2], size: entry[3] }
+      { seq: entry[0], bytes: entry[1], label: entry[2], size: entry[3], path: entry[4] }
     end
 
-    def remember(digest, label, size)
-      data['seen'][digest] = [seq, bytes, label, size]
+    # A repeat of something already spilled is remembered without a path of its
+    # own — it was answered with a reference, not a file — so the path carries
+    # forward from the occurrence that did write one. The digest guarantees the
+    # bytes are the same, so the old file is still the right file.
+    def remember(digest, label, size, path = nil)
+      data['seen'][digest] = [seq, bytes, label, size, path || lookup(digest)&.dig(:path)]
       prune
     end
 

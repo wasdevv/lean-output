@@ -99,7 +99,9 @@ RSpec.describe 'the replacement mirrors the tool response shape' do
     payload = {
       'hook_event_name' => 'PostToolUse', 'session_id' => 'shape-spec',
       'tool_name' => 'mcp__db__query', 'tool_input' => {},
-      'tool_response' => [{ 'type' => 'text', 'text' => fixture('mcp_query_rows.json') }]
+      # Whatever the MCP server was, the text has to identify itself: with no
+      # command to gate on, only Detector.by_output decides.
+      'tool_response' => [{ 'type' => 'text', 'text' => fixture('rspec_failures.txt') }]
     }
     updated = compress(payload)
 

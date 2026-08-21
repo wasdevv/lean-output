@@ -86,28 +86,21 @@ RSpec.describe 'bin/compress' do
       }
     end
 
-    it 'compresses a row set returned as content blocks' do
-      original = fixture('mcp_query_rows.json')
-      stdout, _, status = run_hook(mcp_payload('mcp__insforge__query', original))
+    # An MCP result carries no command, so the text alone has to identify
+    # itself: a server that pipes a test run back is claimable, a row set no
+    # compressor has ever seen is not, and the difference is measured here.
+    it 'compresses a result whose own text names the tool that wrote it' do
+      original = fixture('rspec_failures.txt')
+      stdout, _, status = run_hook(mcp_payload('mcp__runner__exec', original))
 
       expect(status.exitstatus).to eq(0)
       updated = updated_text(JSON.parse(stdout))
-      expect(updated).to include('JSON rows: 40 rows, 7 columns')
+      expect(updated).to include('rspec ./')
       expect(updated.bytesize).to be < original.bytesize * 0.45
     end
 
-    it 'keeps every value the query returned' do
-      original = fixture('mcp_query_rows.json')
-      stdout, = run_hook(mcp_payload('mcp__insforge__query', original))
-      updated = updated_text(JSON.parse(stdout))
-
-      JSON.parse(original).each do |row|
-        row.each_value { |value| expect(updated).to include(value.nil? ? 'null' : value.to_s) }
-      end
-    end
-
-    it 'stays silent for a result a table cannot represent' do
-      stdout, _, status = run_hook(mcp_payload('mcp__insforge__query', fixture('mcp_query_nested.json')))
+    it 'stays silent for a result nothing claims' do
+      stdout, _, status = run_hook(mcp_payload('mcp__insforge__query', fixture('mcp_query_rows.json')))
       expect(status.exitstatus).to eq(0)
       expect(stdout).to be_empty
     end

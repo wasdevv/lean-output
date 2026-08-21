@@ -9,6 +9,8 @@ module LeanOutput
     end
 
     def self.human(bytes)
+      return format('%.1fMB', bytes / 1_048_576.0) if bytes >= 1_048_576
+
       bytes >= 1024 ? format('%.1fkB', bytes / 1024.0) : "#{bytes}B"
     end
 

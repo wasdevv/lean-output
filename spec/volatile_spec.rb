@@ -166,6 +166,57 @@ RSpec.describe 'the volatile level' do
     end
   end
 
+  # The ledger and the vault both make a claim about the same result, and they
+  # used to contradict each other. A spilled result was remembered under the
+  # digest of its *original*, so the next occurrence came back as "900 lines
+  # withheld" — bytes the model had never been given, with no path back to them.
+  # Silent by construction: the model answers as if it had read the file.
+  describe 'a repeat of a result that was only ever a pointer' do
+    def read_big(session = 'pointer-repeat')
+      ENV['LEAN_OUTPUT_MODE'] = 'volatile'
+      LeanOutput::Runner.call(
+        'session_id' => session, 'tool_name' => 'Read',
+        'tool_input' => { 'file_path' => '/tmp/big.rb' },
+        'tool_response' => { 'type' => 'text',
+                             'file' => { 'filePath' => '/tmp/big.rb', 'content' => long } }
+      )&.dig('hookSpecificOutput', 'updatedToolOutput', 'file', 'content')
+    end
+
+    it 'points at the vault instead of claiming the bytes are in the window' do
+      read_big
+      second = read_big
+
+      expect(second).to include('byte-identical to Read /tmp/big.rb')
+      expect(second).not_to include('withheld')
+      expect(File.read(vault_path(second))).to eq(long)
+    end
+
+    # The reference itself writes no file, so the path has to survive being
+    # remembered again — otherwise the third occurrence reintroduces the lie.
+    it 'keeps the path across a chain of repeats' do
+      3.times { read_big }
+
+      expect(File.read(vault_path(read_big))).to eq(long)
+    end
+
+    # The other half of the invariant: when the earlier occurrence really did
+    # arrive whole, "withheld" is the true and much cheaper thing to say.
+    it 'still says withheld when the first occurrence was delivered' do
+      small = "line one\nline two\n#{'filler ' * 100}\n"
+      2.times do
+        @text = LeanOutput::Runner.call(
+          'session_id' => 'delivered-repeat', 'tool_name' => 'Read',
+          'tool_input' => { 'file_path' => '/tmp/small.rb' },
+          'tool_response' => { 'type' => 'text',
+                               'file' => { 'filePath' => '/tmp/small.rb', 'content' => small } }
+        )&.dig('hookSpecificOutput', 'updatedToolOutput', 'file', 'content')
+      end
+
+      expect(@text).to include('lines withheld')
+      expect(@text).not_to include('full text at')
+    end
+  end
+
   describe 'reading back what was spilled' do
     # The pointer promises the content is still there. Compressing the read of a
     # vault path breaks that promise in the exact case the vault exists for, and

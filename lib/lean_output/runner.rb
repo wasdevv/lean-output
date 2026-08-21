@@ -32,7 +32,6 @@ module LeanOutput
 
     def self.call(payload)
       return nil unless payload.is_a?(Hash)
-      return Cap.call(payload) if payload['hook_event_name'] == 'PreToolUse'
 
       tool = payload['tool_name'].to_s
       return nil if vault_read?(tool, payload)
@@ -55,11 +54,11 @@ module LeanOutput
     # remembered — otherwise the second occurrence would have nothing to point
     # at, which is the only way this mechanism can fail quietly.
     def self.climb(session, tool, payload, output, policy)
-      rewritten, hit = decide(session, tool, payload, output, policy)
+      rewritten, hit, path = decide(session, tool, payload, output, policy)
 
       session.advance(output.bytesize)
       if deduplicable?(tool, output, policy)
-        session.remember(Ledger.digest(output), Ledger.label(tool, payload), output.bytesize)
+        session.remember(Ledger.digest(output), Ledger.label(tool, payload), output.bytesize, path)
       end
       session.credit(output.bytesize, (rewritten || output).bytesize, hit: hit)
       session.observe(Ledger.label(tool, payload), rewritten: !rewritten.nil?)
@@ -70,22 +69,23 @@ module LeanOutput
     private_class_method :climb
 
     def self.decide(session, tool, payload, output, policy)
+      label = Ledger.label(tool, payload)
       if deduplicable?(tool, output, policy)
-        reference = Ledger.reference(session, output, Ledger.label(tool, payload))
-        return [reference, true] if reference && reference.bytesize < output.bytesize * policy[:ratio]
+        reference = Ledger.reference(session, output, label)
+        return [reference, true, nil] if reference && reference.bytesize < output.bytesize * policy[:ratio]
       end
 
       claimed = compressed(tool, payload, output, policy)
-      label = Ledger.label(tool, payload)
       # The vault is offered only what no compressor wanted. A compressed
       # result is distilled signal — putting *that* behind a pointer would hide
       # the failures someone is about to read, and the bytes it replaced are
       # already gone anyway. Raw output nobody could claim is the opposite: it
       # is where the size is and where the redundancy is unprovable, so it goes
       # to disk whole instead of being argued with.
-      spilled = Vault.spill(session, label, output, policy) if claimed.nil?
+      spilled, path = Vault.spill(session, label, output, policy) if claimed.nil?
 
-      [clip(session, label, spilled || claimed || output, output, policy), false]
+      clipped, clip_path = clip(session, label, spilled || claimed || output, output, policy)
+      [clipped, false, clip_path || path]
     end
     private_class_method :decide
 
@@ -116,12 +116,16 @@ module LeanOutput
     # neither size nor content — the notice quotes the size the model would
     # have received, because that is the number it needs to judge whether to
     # ask again.
+    #
+    # Returns [text-or-nil, vault path]: the ledger has to know whether this
+    # occurrence reached the model whole before it promises a later one that the
+    # bytes are already in the window.
     def self.clip(session, label, text, output, policy)
-      clipped = Text.clip(text, policy[:cap]) or return text.equal?(output) ? nil : text
+      clipped = Text.clip(text, policy[:cap]) or return [text.equal?(output) ? nil : text, nil]
 
       sizes = { from: Text.human(text.bytesize), to: Text.human(policy[:cap]) }
       path = Vault.store(session, label, output)
-      clipped + (path ? format(CLIPPED, **sizes, path: path) : format(BLIND, **sizes))
+      [clipped + (path ? format(CLIPPED, **sizes, path: path) : format(BLIND, **sizes)), path]
     end
     private_class_method :clip
 
@@ -130,6 +134,11 @@ module LeanOutput
     # compressed, the pointer only ever resolves to another pointer and nothing
     # reaches the content. Bypassing before the ledger also keeps the read out
     # of the digest history, so it can't dedup against the spill it came from.
+    #
+    # Grep is here and not in hooks.json on purpose: the spill notice tells the
+    # model to "Read or grep it", so the day Grep is registered — by this plugin
+    # or by a user's own settings — the promise has to already hold. Six
+    # characters against a silently broken escape hatch.
     def self.vault_read?(tool, payload)
       return false unless %w[Read Grep].include?(tool)
 

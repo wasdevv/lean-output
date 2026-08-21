@@ -51,7 +51,11 @@ RSpec.describe 'the volatile level' do
     it 'replaces a long unclaimed result with its ends and a path' do
       pointer = bash('cat big.log', long)
 
-      expect(pointer.bytesize).to be < 1_500
+      # Against the floor rather than a number picked to pass: a pointer that
+      # is not smaller than the smallest thing worth pointing at would make the
+      # whole rung a cost. Tying the two means the floor cannot be lowered
+      # under the pointer's price without this failing.
+      expect(pointer.bytesize).to be < LeanOutput::Mode::SPILL_BYTES
       expect(pointer).to include('line 1 of something')
       expect(pointer).to include('line 4000 of something')
       expect(pointer).not_to include('line 2000 of something')
@@ -152,6 +156,28 @@ RSpec.describe 'the volatile level' do
       ensure
         ENV.delete('LEAN_OUTPUT_WINDOW')
       end
+    end
+
+    # The floor is not "what a pointer costs" — that is what put it at 500 B and
+    # made 59% of all spills a net loss. It is what a pointer costs divided by
+    # how often the pointer is the last word, and the model follows 80% of them.
+    # A result the model will fetch anyway costs the pointer *on top of* itself.
+    it 'leaves alone anything small enough that fetching it back would cost more' do
+      # Just under the floor: at 500 B this spilled, was read back 76% of the
+      # time, and the pair cost more than sending it once ever would have.
+      body = 'x' * (LeanOutput::Mode::SPILL_BYTES - 100)
+
+      expect(bash('cat small.log', body)).to be_nil
+    end
+
+    it 'still spills the large results the whole rung exists for' do
+      expect(bash('cat big.log', long)).to include('withheld')
+    end
+
+    # 280 / (1 - 0.80) = 1400. Below that a followed pointer is a loss, so a
+    # floor under it is one however good the delivery-side number looks.
+    it 'keeps the floor above the break-even the read-back rate implies' do
+      expect(LeanOutput::Mode::SPILL_BYTES).to be >= 1_400
     end
 
     it 'is off at every level below volatile' do

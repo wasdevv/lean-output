@@ -61,6 +61,18 @@ module LeanOutput
     # a model not told it holds a fragment answers as if it read the whole
     # thing — and nothing beyond that survives being said 2804 times.
     NOTICE = "\n[lean-output] middle withheld — %<size>s, %<lines>d lines, full text at %<path>s (Read or grep it)\n"
+    # Said once per window, after the sentence above has established what a
+    # lean-output path is and what to do with it. Same three facts — something
+    # was withheld, how much, and exactly where — with the explaining of them
+    # dropped.
+    #
+    # `full text at <path>` survives verbatim, and that is deliberate rather
+    # than incidental: it is the shape all three rungs use to hand out a path,
+    # here, at the ceiling, and in the ledger's reference. A terse form that
+    # invented its own would save fifteen more bytes and make every consumer —
+    # the model skimming, a grep, this repo's own specs — carry two patterns for
+    # one fact. One shape everywhere is worth more than the fifteen bytes.
+    TERSE = "\n[lean-output] withheld %<size>s, %<lines>d lines, full text at %<path>s\n"
 
     # [pointer text, path], because a caller that hands out a pointer has to be
     # able to say so later — the ledger cannot claim the model holds bytes it
@@ -70,7 +82,8 @@ module LeanOutput
       return nil unless threshold && output.bytesize > threshold
 
       path = store(session, label, output) or return nil
-      notice = format(NOTICE, size: Text.human(output.bytesize), lines: output.count("\n") + 1, path: path)
+      shape = session.explain?('vault') ? NOTICE : TERSE
+      notice = format(shape, size: Text.human(output.bytesize), lines: output.count("\n") + 1, path: path)
       [preview(output) + notice, path]
     end
 

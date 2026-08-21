@@ -79,143 +79,125 @@ module LeanOutput
 
       def self.discards = 'source echoes, rustc suggestions'
 
+      # The counts come from the parsed diagnostics rather than a second scan of
+      # the text. They used to be two hand-written line counts, each re-deriving
+      # the exclusions `parse_diagnostics` already applies — and the two could
+      # disagree with the body they introduce, which is the one thing a summary
+      # line must never do.
       def self.summary(plain)
         return nil unless plain.match?(DIAG_HEADER)
 
-        # Count only real diagnostics — exclude the summary/footer lines
-        error_count = plain.each_line.count do |l|
-          l.match?(DIAG_HEADER) && l.start_with?('error') &&
-            !l.match?(COMPILE_ERROR)
-        end
-        warning_count = plain.each_line.count do |l|
-          l.match?(DIAG_HEADER) && l.start_with?('warning') &&
-            !l.match?(WARNING_SUMMARY)
-        end
-        compile_error = plain[COMPILE_ERROR]
+        diagnostics = parse_diagnostics(plain)
+        counts = diagnostics.group_by { |diag| diag[:kind] }
+        parts = %i[error warning].filter_map { |kind| tally(kind, counts[kind]&.size) }
 
-        parts = []
-        parts << "#{error_count} error#{error_count == 1 ? '' : 's'}" if error_count.positive?
-        parts << "#{warning_count} warning#{warning_count == 1 ? '' : 's'}" if warning_count.positive?
-        summary = "Cargo: #{parts.join(', ')}"
-        if compile_error
-          crate = compile_error[/could not compile `([^`]+)`/, 1]
-          summary << " — could not compile#{crate ? " `#{crate}`" : ''}"
-        end
-
-        out = +summary
-        parse_diagnostics(plain).each do |diag|
-          out << "\n\n"
-          out << format_diagnostic(diag)
-        end
-        out << "\n"
+        ["Cargo: #{parts.join(', ')}#{failure(plain)}",
+         *diagnostics.map { |diag| format_diagnostic(diag) }].join("\n\n") + "\n"
       end
 
+      def self.tally(kind, count)
+        "#{count} #{kind}#{'s' unless count == 1}" if count&.positive?
+      end
+      private_class_method :tally
+
+      # Which crate failed, when a workspace builds several. The name was always
+      # meant to be here — `COMPILE_ERROR` matches only as far as "compile", so
+      # the old code searched for the crate inside a string that stopped one
+      # word before it and printed the bare verdict every time.
+      def self.failure(plain)
+        line = plain.each_line.find { |l| l.match?(COMPILE_ERROR) } or return ''
+        crate = line[/could not compile `([^`]+)`/, 1]
+
+        " — could not compile#{crate ? " `#{crate}`" : ''}"
+      end
+      private_class_method :failure
+
+      # Lines that carry nothing a rebuilt diagnostic would print: progress,
+      # footers, the two summary lines `summary` already counted, and the source
+      # echo and suggestion diffs this compressor exists to drop.
+      DISCARD = Regexp.union(PROGRESS, FOOTER_NOISE, WARNING_SUMMARY, COMPILE_ERROR,
+                             SOURCE_ECHO, SUGGESTION, PURE_PIPE)
+
+      # A diagnostic runs from its own header to the next one, so slicing on the
+      # header answers "which diagnostic is this line part of" once, for the
+      # whole buffer. That question was previously carried in three mutable
+      # variables threaded through fourteen branches — `current`, `in_art` and a
+      # pending note — and every one of them existed only to answer it.
       def self.parse_diagnostics(plain)
-        diagnostics = []
-        current = nil
-        in_art = false
-        pending_ext_note = nil
-
-        plain.each_line do |raw|
-          line = raw.chomp
-
-          # Skip noise and footer lines
-          next if line.match?(PROGRESS)
-          next if line.match?(FOOTER_NOISE)
-          next if line.match?(WARNING_SUMMARY)
-          next if line.match?(COMPILE_ERROR)
-
-          # Blank line: ends the current art block.
-          # Flush any pending standalone help:/note: that had no following location.
-          if line.strip.empty?
-            if pending_ext_note && current
-              current[:notes] << pending_ext_note
-              pending_ext_note = nil
-            end
-            in_art = false
-            next
-          end
-
-          # Diagnostic header — starts a new diagnostic entry
-          if (m = line.match(DIAG_HEADER))
-            current = { kind: m[1].start_with?('error') ? :error : :warning,
-                        code: m[2],
-                        message: m[3],
-                        location: nil,
-                        labels: [],
-                        notes: [] }
-            diagnostics << current
-            in_art = false
-            pending_ext_note = nil
-            next
-          end
-
-          next unless current
-
-          # Location line " --> file:line:col" or " --> file:line" (external refs)
-          if (m = line.match(ANY_LOCATION))
-            if pending_ext_note
-              current[:notes] << "#{pending_ext_note} (#{m[1]})"
-              pending_ext_note = nil
-            else
-              current[:location] ||= m[1]
-              in_art = true
-            end
-            next
-          end
-
-          # Standalone help:/note: lines — appear either inside or outside art blocks.
-          # These may be followed by a location (external ref) or an art block.
-          if !line.match?(ART_PIPE) && (m = line.match(HELP_LINE))
-            pending_ext_note = "#{m[1]}: #{m[2]}"
-            in_art = false
-            next
-          end
-
-          # ---- Art block / pipe-prefixed line processing ----
-          next unless line.match?(ART_PIPE) || in_art
-
-          next if line.match?(PURE_PIPE)
-
-          # Source echo: "  N | code" — discard
-          next if line.match?(SOURCE_ECHO)
-
-          # Suggestion diff inside art: "  N - old" / "  N + new"
-          next if line.match?(SUGGESTION)
-
-          # = note: / = help: inside art
-          if (m = line.match(NOTE_HELP))
-            current[:notes] << "#{m[1]}: #{m[2]}"
-            next
-          end
-
-          # Caret/dash/tilde line: keep the label after the symbols
-          if (m = line.match(CARET_LINE))
-            # Strip any additional caret/dash/tilde runs that precede the label
-            label = m[2].strip.gsub(/\A[-^~+]+\s*/, '').strip
-            current[:labels] << label unless label.empty?
-            next
-          end
-
-          # Plain text label inside pipe: "  |      arguments to this method are incorrect"
-          # Excludes lines that are just carets/pluses (suggestion insertion markers).
-          next unless (m = line.match(ART_TEXT))
-
-          text = m[1].strip
-          next if text == '|'
-          # Pure symbol lines (e.g. "++++++++++++") are suggestion markers — discard
-          next if text.match?(/\A[-^~+|]+\z/)
-
-          # Inline help:/note: label
-          if (hm = text.match(/\A(help|note):\s*(.+)/))
-            current[:notes] << "#{hm[1]}: #{hm[2]}"
-          else
-            current[:labels] << text
-          end
-        end
-
-        diagnostics
+        lines = plain.each_line.map(&:chomp).reject { |line| line.match?(DISCARD) }
+        lines.slice_before { |line| line.match?(DIAG_HEADER) }
+             .select { |block| block.first.match?(DIAG_HEADER) }
+             .map { |block| parse_block(block) }
       end
+
+      def self.parse_block(block)
+        header = block.first.match(DIAG_HEADER)
+        diag = { kind: header[1].start_with?('error') ? :error : :warning,
+                 code: header[2], message: header[3], location: nil, labels: [], notes: [] }
+        # A standalone `help:`/`note:` may be followed by its own location line,
+        # which belongs to the note rather than to the diagnostic. It is the one
+        # piece of state a single diagnostic genuinely has.
+        pending = nil
+
+        block.drop(1).each do |line|
+          pending = absorb(diag, line, pending)
+        end
+        diag[:notes] << pending if pending
+        diag
+      end
+      private_class_method :parse_block
+
+      # Returns the note still waiting for a location. Only the three arms that
+      # return change it — every other line leaves it alone, which is the rule
+      # the flat loop got wrong: a suggestion marker between a `help:` and the
+      # end of its block used to drop the note on the floor.
+      def self.absorb(diag, line, pending)
+        case line
+        when /\A\s*\z/
+          diag[:notes] << pending if pending
+          return nil
+        when ANY_LOCATION then return locate(diag, Regexp.last_match(1), pending)
+        when HELP_LINE then return "#{Regexp.last_match(1)}: #{Regexp.last_match(2)}"
+        when NOTE_HELP then diag[:notes] << "#{Regexp.last_match(1)}: #{Regexp.last_match(2)}"
+        when CARET_LINE then caret_label(diag, Regexp.last_match(2))
+        when ART_TEXT then label(diag, Regexp.last_match(1).strip)
+        end
+        pending
+      end
+      private_class_method :absorb
+
+      # A location right after a standalone note belongs to the note — that is
+      # what "defined here" is pointing at, not where the error is.
+      def self.locate(diag, location, pending)
+        if pending
+          diag[:notes] << "#{pending} (#{location})"
+        else
+          diag[:location] ||= location
+        end
+        nil
+      end
+      private_class_method :locate
+
+      # Whatever follows the caret run is the label rustc drew the carets for,
+      # `help:` prefix and all. Reclassifying that as a note would move it away
+      # from the span it points at, which is the only thing making it legible.
+      def self.caret_label(diag, tail)
+        text = tail.strip.sub(/\A[-^~+]+\s*/, '').strip
+        diag[:labels] << text unless text.empty?
+      end
+      private_class_method :caret_label
+
+      # Suggestion insertion markers are runs of symbols with no words in them.
+      def self.label(diag, text)
+        return if text.empty? || text.match?(/\A[-^~+|]+\z/)
+
+        if (note = text.match(/\A(help|note):\s*(.+)/))
+          diag[:notes] << "#{note[1]}: #{note[2]}"
+        else
+          diag[:labels] << text
+        end
+      end
+      private_class_method :label
 
       def self.format_diagnostic(diag)
         kind   = diag[:kind] == :error ? 'error' : 'warning'

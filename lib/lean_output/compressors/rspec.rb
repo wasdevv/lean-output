@@ -56,19 +56,23 @@ module LeanOutput
         finished = plain[/^Finished in .+$/]&.sub(/ \(files took.*\)/, '')
         reruns = plain.scan(/^rspec (\S+) # .*$/).flatten
 
-        out = +"RSpec: #{summary}"
-        out << " — #{finished}" if finished
+        head = "RSpec: #{summary}#{" — #{finished}" if finished}"
+        failures = parse_failures(plain).each_with_index.map { |failure, i| format_failure(failure, i, reruns[i]) }
 
-        parse_failures(plain).each_with_index do |failure, i|
-          out << "\n\n#{i + 1}) #{failure[:description]}"
-          out << "  (rspec #{reruns[i]})" if reruns[i]
-          out << "\n   Failure/Error: #{failure[:error]}" if failure[:error]
-          failure[:message].each { |line| out << "\n   #{line}" }
-          out << "\n   at #{failure[:frame]}" if failure[:frame]
-        end
-
-        out << "\n"
+        "#{[head, *failures].join("\n\n")}\n"
       end
+
+      # The rerun command is the one thing here the model cannot reconstruct
+      # from the rest, so it rides on the description line rather than below it.
+      def self.format_failure(failure, index, rerun)
+        out = +"#{index + 1}) #{failure[:description]}"
+        out << "  (rspec #{rerun})" if rerun
+        out << "\n   Failure/Error: #{failure[:error]}" if failure[:error]
+        failure[:message].each { |line| out << "\n   #{line}" }
+        out << "\n   at #{failure[:frame]}" if failure[:frame]
+        out
+      end
+      private_class_method :format_failure
 
       def self.parse_failures(plain)
         section = plain[/^Failures:\n(.*?)(?=^(?:Failed examples:|Pending:|Top \d+ slowest|Finished in ))/m, 1]
@@ -79,38 +83,41 @@ module LeanOutput
                .map { |entry| parse_entry(entry) }
       end
 
+      # Three independent readings of the same lines, which is what the four
+      # mutable locals and the `in_diff` flag were simulating in one pass. They
+      # are independent in a way worth stating: the diff gate stops the
+      # *message* and nothing else, so a backtrace frame printed after a Diff:
+      # block still names the failing line — collapsing all three into one
+      # `take_while` would silently lose it.
       def self.parse_entry(entry)
         lines = entry.lines.map(&:chomp)
         description = lines.shift.to_s.sub(/^\s*\d+\) /, '').strip
-        error = nil
-        message = []
-        frame = nil
-        in_diff = false
+        body = lines.map(&:strip).reject(&:empty?)
 
-        lines.each do |line|
-          stripped = line.strip
-          next if stripped.empty?
-
-          if stripped.start_with?('# ')
-            path = stripped.delete_prefix('# ').sub(/:in .*/, '')
-            frame ||= path unless path.match?(GEM_FRAME) || path.match?(SUPPORT_FRAME)
-            next
-          end
-
-          if stripped.start_with?('Failure/Error:')
-            error = stripped.delete_prefix('Failure/Error:').strip
-            next
-          end
-
-          in_diff ||= stripped == 'Diff:'
-          next if in_diff
-          next if stripped == '(compared using ==)'
-
-          message << stripped if message.size < MAX_MESSAGE_LINES
-        end
-
-        { description: description, error: error, message: message, frame: frame }
+        { description: description,
+          error: body.find { |line| line.start_with?('Failure/Error:') }&.delete_prefix('Failure/Error:')&.strip,
+          message: message_lines(body),
+          frame: app_frame(body) }
       end
+
+      # Everything rspec printed that was not a frame, the error line, or the
+      # diff it renders after them — capped, because a message this long has
+      # stopped being a message.
+      def self.message_lines(body)
+        body.take_while { |line| line != 'Diff:' }
+            .reject { |line| line.start_with?('# ', 'Failure/Error:') || line == '(compared using ==)' }
+            .first(MAX_MESSAGE_LINES)
+      end
+      private_class_method :message_lines
+
+      # The first frame that belongs to the project. A backtrace opens with the
+      # gem that raised and the support file that wrapped it, and neither is
+      # where anyone goes to fix the test.
+      def self.app_frame(body)
+        body.filter_map { |line| line.delete_prefix('# ').sub(/:in .*/, '') if line.start_with?('# ') }
+            .find { |path| !path.match?(GEM_FRAME) && !path.match?(SUPPORT_FRAME) }
+      end
+      private_class_method :app_frame
     end
   end
 end

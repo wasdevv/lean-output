@@ -69,25 +69,36 @@ module LeanOutput
     CAP_BYTES = 2_000
 
     # Where an unclaimed result stops being worth carrying and starts being
-    # worth pointing at. Below it the pointer costs more than the bytes it
-    # replaces; the notice alone is ~220B and the preview 400B.
+    # worth pointing at.
     #
-    # Measured over 8901 real results, spilling everything unclaimed above this
-    # takes the corpus from 9.82MB to 3.03MB — **-69%**, against -22% for the
-    # ceiling and -6% for the compressors. Raising it to 1500B gives back 6
-    # points and to 3000B gives back 23, so the aggressive end is where the
-    # whole difference lives.
+    # Every earlier number in this comment was measured on one side of the
+    # ledger. "Spilling everything above 500B takes the corpus to -69%" counts
+    # what the pointer withholds at delivery and stops there — as if the model
+    # never follows it. It does. Counted across 152 transcripts by pairing each
+    # notice with a later Read of the path it named, **the model reads back 80%
+    # of everything spilled**, and that rate holds from 69% to 85% across 36
+    # separate sessions over nine days. It is the behaviour, not an outlier.
     #
-    # 800B while the pointer cost 463B; the floor was always a function of that
-    # number, and a cheaper pointer is what moved it. With Vault::PREVIEW at
-    # 150B and the path down to ~72B a pointer is ~260B, so at 500B it replaces
-    # a result with something under half its size — the same margin every ratio
-    # in this file already demands of a rewrite.
+    # A followed pointer costs the pointer *plus* the bytes, so the arithmetic
+    # is `N` against `280 + rN`, and spilling wins only above `280 / (1 - r)`.
+    # At the measured rate that floor is ~1400B, and 500B was buying the
+    # plugin's worst trades in bulk:
     #
-    # Replayed over the corpus, 800 → 500 takes the residual from 2.87MB to
-    # 2.58MB. Going on to 350 buys 0.09MB more and costs 800 extra spills, which
-    # is where a pointer stops being cheaper than the bytes it replaces.
-    SPILL_BYTES = 500
+    #   500B–1.5kB   797 spills   76.2% read back    -64,819 bytes
+    #   1.5–4kB      347 spills   85.9% read back    +16,198
+    #   4–16kB       182 spills   90.7% read back    +72,330
+    #   >16kB         31 spills   64.5% read back   +767,715
+    #
+    # 59% of all spills were a net loss, and 31 results carry 97% of the win.
+    # Sweeping the floor against the same data: 500 → +791,424 bytes, 1200 →
+    # +854,226, 1500 → +856,243, 2000 → +855,821, 3000 → +843,171. The top is
+    # flat from 1200 to 2000, so this is a plateau rather than a fitted point,
+    # and 1500 sits in the middle of it.
+    #
+    # The gain is 8.2% more bytes on 59% fewer spills — fewer disk writes, and
+    # 797 pointers that never enter the window to be explained, followed, or
+    # paid for once per turn thereafter.
+    SPILL_BYTES = 1_500
 
     POLICY = {
       'off' => nil,

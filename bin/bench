@@ -248,6 +248,13 @@ end
 # So the check follows the pointer, exactly as the model is told to. What it must
 # never do is count those bytes as delivered — `reduction` is still measured on
 # the returned text alone, because the cost of a pointer is what the model paid.
+# The vault's two notices and only those. The full one explains, the terse one
+# is what it says after the explanation is already in the window — matching the
+# long string alone made this check silently stop recognising a spill the moment
+# the short form shipped. The ceiling's notice must NOT match: it says `full
+# text at` too, but it is the one rung here that destroys something.
+SPILLED = /\[lean-output\] (?:middle )?withheld/
+
 def resolved(text)
   path = text[/full text at (\S+)/, 1]
   path && File.exist?(path) ? "#{text}\n#{File.read(path)}" : text
@@ -362,7 +369,7 @@ NEGATIVE.each_with_index do |scenario, index|
   # Reading a bare non-nil as failure was right until the vault became the
   # default, and since then it has failed all seven of these on a plugin that
   # was behaving correctly.
-  next if result && updated(result).to_s.include?("middle withheld")
+  next if result && updated(result).to_s.match?(SPILLED)
 
   fail!("MUST NOT COMPRESS — #{scenario[:name]}: #{scenario[:why]}") if result
 end

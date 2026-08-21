@@ -15,10 +15,13 @@ require 'spec_helper'
 # largest 10% of calls hold 50.1% of the bytes and the median is 1261B. The
 # vault takes that corpus to -65%, the ceiling alone to -22%, compressors -6%.
 RSpec.describe 'the volatile level' do
-  def bash(command, output, level: 'volatile')
+  # A fresh session per call by default, so one example's spills cannot make the
+  # next one's look like repeats. Anything asserting what the plugin says the
+  # *second* time has to pass a fixed id — that is the whole subject there.
+  def bash(command, output, level: 'volatile', session: "volatile-#{rand(1 << 32)}")
     ENV['LEAN_OUTPUT_MODE'] = level
     LeanOutput::Runner.call(
-      'session_id' => "volatile-#{rand(1 << 32)}",
+      'session_id' => session,
       'tool_name' => 'Bash',
       'tool_input' => { 'command' => command },
       'tool_response' => { 'stdout' => output, 'stderr' => '' }
@@ -103,6 +106,52 @@ RSpec.describe 'the volatile level' do
 
       expect(pointer).not_to include('middle withheld')
       expect(pointer).to include('rspec ./')
+    end
+
+    # Rung 2 turned on the plugin's own prose. The explanation of what a
+    # lean-output path is does not change between spills, and at this level it
+    # was being paid once per spill — 3824 times over 32 real sessions.
+    describe 'the second time it has to say the same sentence' do
+      def spill(name, body) = bash("cat #{name}", body, session: 'prose-spec')
+
+      it 'explains once and then stops explaining' do
+        first = spill('a.log', long)
+        second = spill('b.log', "#{long}b")
+
+        expect(first).to include('middle withheld').and include('(Read or grep it)')
+        expect(second).to include('withheld')
+        expect(second).not_to include('(Read or grep it)')
+        expect(second.bytesize).to be < first.bytesize
+      end
+
+      # The line this rung must not cross. Prose is what gets shortened; the
+      # locator is content, and a pointer that cannot be resolved is the one
+      # failure this plugin exists to avoid. Both forms are read back here.
+      it 'hands out a path that resolves in either form' do
+        first = spill('a.log', long)
+        second = spill('b.log', "#{long}b")
+
+        expect(File.read(vault_path(first))).to eq(long)
+        expect(File.read(vault_path(second))).to eq("#{long}b")
+      end
+
+      # Both forms say it the same way on purpose: three rungs hand out paths —
+      # this one, the ceiling and the ledger — and one shape between them is
+      # worth more than the fifteen bytes a bespoke terse form would save.
+      it 'keeps `full text at` as the one way any rung hands out a path' do
+        pointers = [spill('a.log', long), spill('b.log', "#{long}b")]
+
+        expect(pointers).to all(match(/full text at \S+/))
+      end
+
+      it 'explains again once the earlier explanation may have been compacted away' do
+        spill('a.log', long)
+        ENV['LEAN_OUTPUT_WINDOW'] = '1'
+
+        expect(spill('c.log', "#{long}c")).to include('(Read or grep it)')
+      ensure
+        ENV.delete('LEAN_OUTPUT_WINDOW')
+      end
     end
 
     it 'is off at every level below volatile' do

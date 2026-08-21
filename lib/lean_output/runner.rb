@@ -80,7 +80,7 @@ module LeanOutput
         return [reference, true, nil] if reference && reference.bytesize < output.bytesize * policy[:ratio]
       end
 
-      claimed = compressed(tool, payload, output, policy)
+      claimed = compressed(session, tool, payload, output, policy)
       # The vault is offered only what no compressor wanted. A compressed
       # result is distilled signal — putting *that* behind a pointer would hide
       # the failures someone is about to read, and the bytes it replaced are
@@ -94,13 +94,21 @@ module LeanOutput
     end
     private_class_method :decide
 
-    def self.compressed(tool, payload, output, policy)
+    def self.compressed(session, tool, payload, output, policy)
       compressed = rewrite(tool, payload, output, policy)
       return nil if compressed.nil? || compressed.equal?(output)
 
       ceiling = ceiling(tool, payload, output, policy)
       return nil unless ceiling && compressed.bytesize < output.bytesize * ceiling
 
+      # The naming is *not* subject to the terse treatment the vault notice
+      # gets, and the bench refuses it outright — SILENT LOSS, "a lossy rewrite
+      # that names nothing it dropped". The two cases are not alike. A spill
+      # keeps its locator, so the shortened notice still resolves to everything
+      # that was withheld; a compressed result has no file behind it, and the
+      # list of discards is the only thing standing between the model and
+      # content that is simply gone. Repeating it costs 52B a rewrite, which is
+      # what an unverifiable claim is worth avoiding.
       dropped = LeanOutput.discards(output, command: command_for(tool, payload))
       compressed + footer(output.bytesize, compressed.bytesize, dropped)
     end

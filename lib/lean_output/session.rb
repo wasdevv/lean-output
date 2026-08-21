@@ -66,7 +66,8 @@ module LeanOutput
     end
 
     def self.blank
-      { 'v' => VERSION, 'seq' => 0, 'bytes' => 0, 'seen' => {}, 'watch' => [], 'gain' => gain_blank }
+      { 'v' => VERSION, 'seq' => 0, 'bytes' => 0, 'seen' => {}, 'watch' => [],
+        'said' => {}, 'gain' => gain_blank }
     end
 
     def self.gain_blank
@@ -126,6 +127,29 @@ module LeanOutput
                               [size.to_i, previous ? previous[:size].to_i : 0].max,
                               path || previous&.dig(:path)]
       prune
+    end
+
+    # Rung 2, turned on the plugin's own prose.
+    #
+    # "middle withheld — …, full text at …, (Read or grep it)" is 86 bytes of
+    # explanation that never varies, and at the default level it is said once
+    # per spill: measured over 32 real sessions, 3824 times, 321 kB of one
+    # sentence. The ledger's whole argument is that bytes the context already
+    # holds cost the same as bytes it never needed, and nothing exempts the
+    # bytes this plugin writes itself.
+    #
+    # The window is the ledger's, for the same reason the ledger has one: a
+    # compaction can take the earlier explanation away, and prose the model can
+    # no longer see is prose that has to be said again. Between those, the terse
+    # form carries the identical path — what shortens is the sentence around it,
+    # never the locator, because a pointer that cannot be resolved is the one
+    # failure this plugin must not ship.
+    def explain?(topic, window: Ledger.window_bytes)
+      said = data['said'] ||= {}
+      return false if said[topic] && bytes - said[topic].to_i <= window
+
+      said[topic] = bytes
+      true
     end
 
     def credit(before, after, hit: false)

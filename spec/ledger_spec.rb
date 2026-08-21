@@ -65,14 +65,14 @@ RSpec.describe LeanOutput::Ledger do
     read('app/models/user.rb', body)
     read('app/models/post.rb', 'x' * 5_000)
 
-    expect(described_class.reference(session_after, body, 'Read app/models/user.rb', window: 100)).to be_nil
+    expect(described_class.reference(session_after, body, window: 100)).to be_nil
   end
 
   it 'still points when the window is wide enough to reach' do
     read('app/models/user.rb', body)
     read('app/models/post.rb', 'x' * 5_000)
 
-    expect(described_class.reference(session_after, body, 'x', window: 100_000)).to include('byte-identical')
+    expect(described_class.reference(session_after, body, window: 100_000)).to include('byte-identical')
   end
 
   it 'ignores a result too small for the reference to be worth its own bytes' do
@@ -104,6 +104,42 @@ RSpec.describe LeanOutput::Ledger do
       text = updated(read('app/models/user.rb', body))
 
       expect(text.bytesize).to be < body.bytesize * 0.3
+    end
+  end
+
+  # The half of the invariant the vault fix missed. A compressor claims the
+  # result, it fits under the ceiling, so nothing reaches the vault and nothing
+  # reaches disk — and the model holds a distilled summary, not the raw lines.
+  # Saying "100 lines withheld" there is the same lie the vault case made, minus
+  # even the file to recover from, and it is the common case: this is the path
+  # `full`, the shipped default, takes on every repeated test run.
+  describe 'a repeat of something the model only ever saw compressed' do
+    let(:failures) { fixture('rspec_failures.txt') }
+
+    def rspec_run
+      LeanOutput::Runner.call(
+        'tool_name' => 'Bash', 'session_id' => 'compressed-repeat',
+        'tool_input' => { 'command' => 'bundle exec rspec' },
+        'tool_response' => { 'stdout' => failures, 'stderr' => '' }
+      )&.dig('hookSpecificOutput', 'updatedToolOutput', 'stdout')
+    end
+
+    it 'delivers the summary again rather than claiming the lines are withheld' do
+      first = rspec_run
+      second = rspec_run
+
+      expect(second).not_to include('withheld')
+      expect(second).to include('rspec ./')
+      expect(second.bytesize).to eq(first.bytesize)
+    end
+
+    # The saving is real, so declining has to stay narrow: a result that reached
+    # the model verbatim is still deduplicated, and that is the case the ledger
+    # was built for.
+    it 'still references a repeat that was delivered verbatim' do
+      read('app/models/user.rb', body)
+
+      expect(updated(read('app/models/user.rb', body))).to include('lines withheld')
     end
   end
 

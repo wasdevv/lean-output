@@ -15,8 +15,8 @@ module LeanOutput
     # for the opposite reason — "path:line: text" is a shape half the tooling
     # world emits, and without a command naming grep there is nothing to say the
     # buffer is a hit list rather than a compiler's diagnostics.
-    OUTPUT_DETECTABLE = [Compressors::Rspec, Compressors::Rubocop, Compressors::Brakeman, Compressors::GitDiff,
-                         Compressors::JsonRows].freeze
+    OUTPUT_DETECTABLE = [Compressors::Rspec, Compressors::Rubocop, Compressors::Brakeman,
+                         Compressors::GitDiff].freeze
     JSON_FORMAT = /(-f|--format)[= ]?j/
 
     def self.for(command, output)

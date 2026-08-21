@@ -56,8 +56,6 @@ SCENARIOS = [
   # keeps every line. So it clears a lower floor, and the target here is modest
   # on purpose — measured over the corpus the ceiling is about -35%.
   { name: "grep -rn — repeated paths",  command: 'grep -rn "plain" lib/', file: "grep_hits.txt", target: 0.20, expect_locations: true },
-  { name: "mcp query — 40 rows",       tool: "mcp__insforge__query",    file: "mcp_query_rows.json",    target: 0.60, expect_cells: true },
-  { name: "mcp query — enveloped",     tool: "mcp__insforge__query",    file: "mcp_query_wrapped.json", target: 0.65, expect_cells: true },
   # A chain runs several tools into one buffer. Each is summarised in the order
   # it ran; the location check is what proves no tool was silently dropped.
   { name: "chain — rspec+rubocop+brakeman", command: "bundle exec rspec && bundle exec rubocop && bin/brakeman -q",
@@ -93,10 +91,8 @@ NEGATIVE = [
     why: "machine-readable output is consumed verbatim" },
   { name: "short output",                 command: "cargo build", file: nil,
     why: "under both the line count and the byte floor" },
-  { name: "mcp query — nested values",    tool: "mcp__insforge__query", file: "mcp_query_nested.json",
-    why: "a nested object has no column to sit in" },
-  { name: "mcp query — multiline values", tool: "mcp__insforge__query", file: "mcp_query_multiline.json",
-    why: "a newline inside a cell would split one row across two lines" },
+  { name: "mcp query — a row set",        tool: "mcp__insforge__query", file: "mcp_query_rows.json",
+    why: "no command to gate on, and a row set names no tool that wrote it" },
   { name: "grep — one hit per file",      command: 'grep -rn "def self.summary" lib/', file: "grep_scattered.txt",
     why: "nothing repeats to factor out; a header per file would grow the buffer" },
   # The ledger's own negative cases. A reference is a pointer into the
@@ -191,20 +187,6 @@ def all_locations(original)
   # glued together.
   plain.scan(LeanOutput::Compressors::Grep::HIT) { |file, line| locations << "#{file} #{line}" }
   locations
-end
-
-# A row set has no file:line to lose; what must survive is the schema and every
-# cell. Checked verbatim rather than word by word, because a value like
-# "timestamp with time zone" would satisfy a per-word check by accident.
-def json_cells(original)
-  parsed = JSON.parse(original)
-  rows = parsed.is_a?(Hash) ? parsed.values.find { |value| value.is_a?(Array) } : parsed
-  return [] unless rows.is_a?(Array) && !rows.empty? && rows.all?(Hash)
-
-  values = rows.flat_map { |row| row.values.map { |value| value.nil? ? "null" : value.to_s } }
-  (rows.first.keys + values).uniq
-rescue JSON::ParserError
-  []
 end
 
 # MCP results arrive as content blocks, a Read arrives as a structured file, and
@@ -327,11 +309,6 @@ SCENARIOS.each_with_index do |scenario, index|
 
   dropped = unclaimed(scenario).reject { |text| compressed.include?(text) }
   fail!("LOST UNCLAIMED OUTPUT in #{label}: #{dropped.size} block(s) no compressor owned") unless dropped.empty?
-
-  cells = json_cells(original)
-  missing_cells = cells.reject { |cell| compressed.include?(cell) }
-  fail!("LOST CELLS in #{label}: #{missing_cells.take(5).join(", ")}") unless missing_cells.empty?
-  fail!("NO CELLS EXTRACTED from #{label}: the invariant is vacuous here") if scenario[:expect_cells] && cells.empty?
 
   target = scenario[:target] || (scenario[:must_hit_target] ? TARGET : nil)
   if target && reduction < target

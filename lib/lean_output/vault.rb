@@ -62,12 +62,16 @@ module LeanOutput
     # thing — and nothing beyond that survives being said 2804 times.
     NOTICE = "\n[lean-output] middle withheld — %<size>s, %<lines>d lines, full text at %<path>s (Read or grep it)\n"
 
+    # [pointer text, path], because a caller that hands out a pointer has to be
+    # able to say so later — the ledger cannot claim the model holds bytes it
+    # only ever got a path to.
     def self.spill(session, label, output, policy)
       threshold = policy[:spill]
       return nil unless threshold && output.bytesize > threshold
 
       path = store(session, label, output) or return nil
-      preview(output) + format(NOTICE, size: Text.human(output.bytesize), lines: output.count("\n") + 1, path: path)
+      notice = format(NOTICE, size: Text.human(output.bytesize), lines: output.count("\n") + 1, path: path)
+      [preview(output) + notice, path]
     end
 
     # Head and tail rather than head alone: the head says what this is, and for
@@ -108,7 +112,11 @@ module LeanOutput
     def self.store(session, label, output)
       dir = File.join(root, Digest::SHA256.hexdigest(session.id)[0, SESSION_CHARS])
       FileUtils.mkdir_p(dir)
-      path = File.join(dir, format('%04d-%s.txt', session.seq, slug(label)))
+      # Six digits, because `prune` orders these names lexicographically: at four
+      # the ordering inverts past seq 9999 and the prune would delete the newest
+      # files instead of the oldest. Needs both a very long session and a full
+      # vault dir to bite, which is exactly the kind of bug that ships.
+      path = File.join(dir, format('%06d-%s.txt', session.seq, slug(label)))
       File.write(path, output)
       prune(dir)
       FileUtils.rm_rf(sessions.drop(SESSIONS))

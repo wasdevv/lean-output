@@ -114,8 +114,6 @@ Measured on real outputs captured from a Rails 8 app (`bin/bench`), in five sect
 | cargo — warnings (ANSI) | 2575 → 1070 | 644 → 267 | **-58%** |
 | cargo — clean build | 120 | 30 | passthrough² |
 | grep -rn — repeated paths | 3585 → 2578 | 896 → 644 | **-28%** |
-| mcp query — 40 rows | 8450 → 2548 | 2113 → 636 | **-70%** |
-| mcp query — enveloped | 9205 → 2548 | 2301 → 636 | **-72%** |
 | chain — rspec+rubocop+brakeman | 9775 → 2233 | 2444 → 554 | **-77%** |
 | chain — cargo+rspec | 6124 → 1799 | 1531 → 448 | **-71%** |
 | chain — one segment, two tools | 6733 → 1600 | 1683 → 399 | **-76%** |

@@ -112,11 +112,7 @@ module LeanOutput
     def self.store(session, label, output)
       dir = File.join(root, Digest::SHA256.hexdigest(session.id)[0, SESSION_CHARS])
       FileUtils.mkdir_p(dir)
-      # Six digits, because `prune` orders these names lexicographically: at four
-      # the ordering inverts past seq 9999 and the prune would delete the newest
-      # files instead of the oldest. Needs both a very long session and a full
-      # vault dir to bite, which is exactly the kind of bug that ships.
-      path = File.join(dir, format('%06d-%s.txt', session.seq, slug(label)))
+      path = File.join(dir, format('%04d-%s.txt', session.seq, slug(label)))
       File.write(path, output)
       prune(dir)
       FileUtils.rm_rf(sessions.drop(SESSIONS))
@@ -133,8 +129,14 @@ module LeanOutput
     end
     private_class_method :slug
 
+    # Ordered by the sequence number, read as a number. Sorting the names as
+    # strings was right only while every name was the same width: it inverts
+    # past seq 9999, and it inverts immediately for any directory holding two
+    # widths at once, where the prune deletes the file it just wrote and leaves
+    # the old ones un-reclaimable. A number has neither problem and needs no
+    # migration.
     def self.prune(dir)
-      files = Dir.glob(File.join(dir, '*.txt')).sort
+      files = Dir.glob(File.join(dir, '*.txt')).sort_by { |file| File.basename(file)[/\A\d+/].to_i }
       return if files.size <= KEEP
 
       FileUtils.rm_f(files.first(files.size - KEEP))

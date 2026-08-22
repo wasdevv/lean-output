@@ -109,18 +109,23 @@ Counting bytes is still one-sided. Two more numbers from the same pairing:
 
 So the dominant pattern is not "fetched later, if it turns out to matter". It is: pointer, then immediately the same bytes anyway, with an extra assistant turn wedged in between. And [the argument for the aggressive default](#why-the-default-is-the-aggressive-one) is precisely that a turn is not free — it re-reads the whole accumulated prefix. Measured over 32,199 assistant turns in these transcripts, **the median turn re-reads 121,849 tokens**.
 
-At the 1.5 kB floor a round trip bought 1752 bytes, about 438 tokens. It cost 278 times what it saved.
+At the 1.5 kB floor a round trip bought 1752 bytes, about 438 tokens, against a turn that re-reads six figures. Both sides of that are then measured **per spill** rather than assumed — walking each transcript in order gives, for all 1375 spills, how many assistant turns the session still had left to carry the result (median **231**, mean 445) and, for each read-back, the prefix that turn actually re-read (median **167,658** tokens). A first pass guessed 112 turns and 121,849 tokens and was wrong in both directions.
 
-Swept in token-turns — bytes saved times the ~112 turns a result is still carried for, minus one prefix read per round trip — against four prices for a turn, since that price is the uncertain input:
+A spill is therefore worth `(N − 280)/4 × remaining` when the pointer is the last word, and costs `280/4 × remaining + prefix` when it is not:
 
-| floor | turn = 30k | 60k | **121,849 (measured)** | 197k |
-|---|---|---|---|---|
-| 1.5 kB | +9.3M | −5.4M | **−35.6M** | −72.5M |
-| 6 kB | +19.5M | +16.1M | +9.0M | +0.4M |
-| **16 kB** | **+20.9M** | **+20.2M** | +18.9M | +17.3M |
-| 48 kB | +19.5M | +19.4M | +19.2M | +18.9M |
+| floor | spills | round trips | net token-turns |
+|---|---|---|---|
+| 500 B | 1375 | 1106 | **−226.8M** |
+| 1.5 kB | 567 | 489 | **−26.2M** |
+| 3 kB | 281 | 247 | +18.2M |
+| 6 kB | 133 | 114 | +34.6M |
+| **16 kB** | **32** | **21** | **+44.7M** |
+| 24 kB | 19 | 10 | +43.5M |
+| 40 kB | 14 | 6 | +43.3M |
 
-16 kB is within 10% of optimal at every price and negative at none, which is what picks it over the per-column winners. What survives is **32 spills of the 1357** this corpus produced — and those 32 carry 97% of the byte win at 21 round trips instead of 489.
+**500 B — the floor for four versions — was costing a quarter of a billion token-turns**, and 1.5 kB was still negative. Three checks say 16 kB is the answer rather than an artefact: the fine sweep is flat from 12 kB to 40 kB with its peak here; dropping the three largest spills leaves the optimum where it is (+26.5M); and moving the pointer's own cost between 200 B and 400 B does not move it either.
+
+What survives is **32 spills of 1375**, carrying 97% of the byte win at 21 round trips instead of 1106.
 
 #### What that costs on the number this repo used to quote
 
@@ -128,7 +133,7 @@ Swept in token-turns — bytes saved times the ~112 turns a result is still carr
 
 The vault is now what it always claimed to be — the rung for results that are genuinely enormous — and it is a much smaller rung than the old number implied.
 
-Two assumptions carry this, both worth naming. The 80% was observed *at the old floor*; the small results now delivered whole need no assumption, but the rate for what still spills is taken to hold. And the token-turn arithmetic is a model, not a measurement — the four inputs to it are measured, the multiplication is not. Re-running the pairing above is how to check both.
+One assumption carries this, and it is worth naming since the other one is now gone. The 80% was observed *at the old floor*: the results below it are simply delivered from here, which needs no assumption, but the read-back rate for what still spills is taken to hold. The arithmetic itself is no longer a model — remaining turns and prefix size are measured per spill rather than averaged, which is what moved the first pass's answer. Re-running the pairing is how to check the rate.
 
 Making the pointer cheap is still worth doing — a 150 B preview instead of 250 B (the *same* results spill, so it is free), a path cut from 123 B to ~72 B by hashing the session id and capping the slug, and the explanation said once per window rather than once per spill. But the floor is not simply what a pointer costs, which is the mistake that put it at 500 B: it is what a pointer costs **divided by how often the pointer is the last word**. At a 20% miss rate a 280 B pointer needs 1.4 kB of content behind it before it pays, and every earlier number in this section was computed as though the miss rate were 100%.
 

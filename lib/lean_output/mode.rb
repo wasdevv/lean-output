@@ -103,29 +103,35 @@ module LeanOutput
     # needed" — it is pointer, then immediately the same bytes anyway, with an
     # extra assistant turn in between that re-reads the entire prefix.
     #
-    # Priced from the same transcripts: the median turn re-reads 121,849 tokens
-    # of prefix. A round trip at the 1.5kB floor bought 1752 bytes, ~438 tokens.
-    # It cost 278 times what it saved.
+    # Both sides of that are measured per spill rather than assumed. Walking
+    # the transcripts in order gives, for each of 1375 spills, how many
+    # assistant turns the session still had left to carry it — median 231, mean
+    # 445 — and, for each read-back, the prefix that turn actually re-read:
+    # median 167,658 tokens. A first pass guessed 112 turns and 121,849 tokens
+    # and was wrong in both directions.
     #
-    # Swept in token-turns — bytes saved times the ~112 turns a result is still
-    # carried for, minus one prefix read per round trip — against four prices
-    # for a turn, because that price is the uncertain input:
+    # So a spill is worth `(N - 280)/4 × remaining` when the pointer is the last
+    # word, and costs `280/4 × remaining + prefix` when it is not. Swept:
     #
-    #   floor     30k      60k    121849     197k
-    #   1500    +9.3M    -5.4M    -35.6M   -72.5M
-    #   6000   +19.5M   +16.1M     +9.0M    +0.4M
-    #  16000   +20.9M   +20.2M    +18.9M   +17.3M
-    #  48000   +19.5M   +19.4M    +19.2M   +18.9M
+    #      500   -226.8M token-turns   1375 spills, 1106 round trips
+    #     1500    -26.2M                567 spills,  489
+    #     3000    +18.2M                281 spills,  247
+    #     6000    +34.6M                133 spills,  114
+    #    16000    +44.7M                 32 spills,   21
+    #    24000    +43.5M                 19 spills,   10
+    #    40000    +43.3M                 14 spills,    6
     #
-    # 16kB is within 10% of optimal at every price and negative at none, which
-    # is what picks it over the per-column winners. At 1.5kB the vault is a net
-    # loss the moment a turn costs more than ~45k tokens, and the measured
-    # median is nearly three times that.
+    # 500B — the floor for four versions — was costing a quarter of a billion
+    # token-turns, and 1.5kB was still negative. Three checks say 16kB is the
+    # answer and not an artefact: the fine sweep is flat from 12kB to 40kB with
+    # its peak here, dropping the three largest spills leaves the optimum where
+    # it is (+26.5M), and moving the pointer's own cost between 200B and 400B
+    # does not move it either.
     #
-    # What survives is 32 spills of the 1357 this corpus produced — and those 32
-    # carry 97% of the byte win while costing 21 round trips instead of 489. The
-    # rung ends up doing what it always claimed: taking the results that are
-    # genuinely enormous, and leaving everything else alone.
+    # What survives is 32 spills of 1375 — and those 32 carry 97% of the byte
+    # win at 21 round trips instead of 1106. The rung ends up doing what it
+    # always claimed: taking the results that are genuinely enormous, and
+    # leaving everything else alone.
     SPILL_BYTES = 16_000
 
     POLICY = {

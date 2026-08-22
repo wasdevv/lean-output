@@ -25,11 +25,28 @@ module LeanOutput
     # settled that two lines identify an output — this is that, plus a line of
     # tail, because a command puts its verdict at the bottom.
     #
-    # 250B was the previous setting and 150B is nearly free: replayed over the
-    # real corpus the two spill the *same 2920 results*, and the smaller preview
-    # takes the residual from 3.32MB to 3.02MB, **-8.8%** for no change in what
-    # goes to disk. Below this the head stops being a line.
-    PREVIEW = 150
+    # 150B was right when the floor was 500B and this was said 3824 times: every
+    # byte of preview was paid thousands of times over, so the number was driven
+    # down until the head stopped being a line.
+    #
+    # The floor is 16kB now and the corpus produces 32 spills, which inverts the
+    # question. The preview is no longer a bulk cost to minimise; it is the only
+    # thing standing between a pointer and a round trip, and a round trip is
+    # measured at 925,898 tokens on average — the prefix that turn re-reads plus
+    # the content arriving anyway, one turn later, for the rest of the session.
+    #
+    # Priced across those 32 spills: 400B costs 348k tokens, 1000B costs 1.18M,
+    # 2000B costs 2.58M. So 1000B pays for itself by preventing **1.3 of the 21
+    # read-backs — 6%**. That is the bar, and it is written here so it can be
+    # checked rather than assumed.
+    #
+    # This is the one number in this file that is a bet rather than a
+    # measurement. The cost is certain and the benefit is not: nothing in the
+    # transcripts can say whether a larger head and tail would have answered the
+    # question, because they were all written at 150B. Re-running the
+    # notice-to-Read pairing after a few weeks is what settles it — if the
+    # read-back rate has not moved off 65%, this should go back down.
+    PREVIEW = 1_000
     # A quarter of every pointer used to be filesystem path — 0.36MB of the
     # 3.32MB residual, said 2920 times. The session id contributed 36 of those
     # bytes and the slug up to 40, neither of which the model reads: it reads

@@ -77,8 +77,18 @@ RSpec.describe LeanOutput::Mode do
       end
     end
 
-    it 'looks at smaller results under ultra than under full' do
-      expect(described_class.policy('ultra')[:min_bytes]).to be < described_class.policy('full')[:min_bytes]
+    # This used to assert that a conservative level looks at fewer results, and
+    # `full` sat at 400B against ultra's 200B. What that floor gates is the
+    # ledger, and the ledger is the one rung with nothing to be conservative
+    # about: a reference is read in place, never fetched, so it costs no round
+    # trip at any level. Measured, one is 133B at the median and 236B at its
+    # largest, and `ratio` already refuses any that fails to beat what it
+    # replaces. The levels differ on what they are willing to *discard*, which
+    # is `ratio` and `lossless_only`, not on what they are willing to look at.
+    it 'looks at the same results at every level' do
+      floors = described_class::LEVELS.filter_map { |level| described_class.policy(level)&.fetch(:min_bytes) }
+
+      expect(floors.uniq).to eq([200])
     end
 
     it 'describes every level it offers' do

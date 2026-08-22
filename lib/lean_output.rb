@@ -20,6 +20,7 @@ require_relative 'lean_output/compressors/grep'
 require_relative 'lean_output/detector'
 require_relative 'lean_output/runner'
 require_relative 'lean_output/corpus'
+require_relative 'lean_output/readback'
 
 module LeanOutput
   VERSION = '1.6.0'

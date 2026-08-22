@@ -83,7 +83,7 @@ RSpec.describe 'the volatile level' do
     # log and would be worth the whole tail on a result that has no break to
     # align to — an MCP row set, a minified file. Those get the raw slice.
     it 'still ends a single-line result with its own last bytes' do
-      pointer = bash('psql -c "select …"', "id,name,#{'x' * 4000},END")
+      pointer = bash('psql -c "select …"', "id,name,#{'x' * 20_000},END")
 
       expect(pointer).to include("END\n[lean-output] middle withheld")
     end
@@ -174,10 +174,12 @@ RSpec.describe 'the volatile level' do
       expect(bash('cat big.log', long)).to include('withheld')
     end
 
-    # 280 / (1 - 0.80) = 1400. Below that a followed pointer is a loss, so a
-    # floor under it is one however good the delivery-side number looks.
+    # Bytes alone put break-even at 280/(1-0.80) = 1400. A followed pointer
+    # also costs a turn, and a turn re-reads 121,849 tokens of prefix — below
+    # ~6kB the rung is a net loss at any plausible price for that turn, however
+    # good the delivery-side number looks.
     it 'keeps the floor above the break-even the read-back rate implies' do
-      expect(LeanOutput::Mode::SPILL_BYTES).to be >= 1_400
+      expect(LeanOutput::Mode::SPILL_BYTES).to be >= 6_000
     end
 
     it 'is off at every level below volatile' do
@@ -210,6 +212,19 @@ RSpec.describe 'the volatile level' do
       clipped = LeanOutput::Text.clip(text, LeanOutput::Mode::CAP_BYTES)
 
       expect(clipped.bytesize).to be <= LeanOutput::Mode::CAP_BYTES + 5
+    end
+
+    # The interaction that nearly shipped with the 16kB floor. "It fires almost
+    # exclusively on compressed results" was true only because the spill floor
+    # used to sit below the cap: raise the floor above it and the one rung that
+    # destroys anything silently acquires every unclaimed result in between —
+    # the exact range the vault had just been told to leave alone. The rule is
+    # written down now, so the two constants can move independently.
+    it 'never cuts raw output, however far the spill floor is above the cap' do
+      raw = (1..200).map { |n| "line #{n} that no compressor will ever claim #{n * 7919}" }.join("\n")
+
+      expect(raw.bytesize).to be_between(LeanOutput::Mode::CAP_BYTES, LeanOutput::Mode::SPILL_BYTES)
+      expect(bash('cat middling.log', raw)).to be_nil
     end
 
     it 'exists only at volatile' do
@@ -325,7 +340,7 @@ RSpec.describe 'the volatile level' do
     # from, and every read after that dedups against the notice.
     it 'hands back a vault file whole, however many times it is read' do
       ENV['LEAN_OUTPUT_MODE'] = 'volatile'
-      content = "marker\n#{'x' * 4_000}"
+      content = "marker\n#{'x' * 20_000}"
       path = File.join(LeanOutput::Vault.root, 'a1b2c3d4', '0001-cat-big.txt')
 
       2.times do
@@ -342,7 +357,7 @@ RSpec.describe 'the volatile level' do
 
     it 'still compresses a read of the same size outside the vault' do
       ENV['LEAN_OUTPUT_MODE'] = 'volatile'
-      content = "marker\n#{'x' * 4_000}"
+      content = "marker\n#{'x' * 20_000}"
 
       result = LeanOutput::Runner.call(
         'session_id' => 'vault-readback', 'tool_name' => 'Read',

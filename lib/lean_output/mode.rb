@@ -95,10 +95,38 @@ module LeanOutput
     # flat from 1200 to 2000, so this is a plateau rather than a fitted point,
     # and 1500 sits in the middle of it.
     #
-    # The gain is 8.2% more bytes on 59% fewer spills — fewer disk writes, and
-    # 797 pointers that never enter the window to be explained, followed, or
-    # paid for once per turn thereafter.
-    SPILL_BYTES = 1_500
+    # That fixed one side and left another. Counting bytes says a followed
+    # pointer costs 280B; it also costs a *turn*, and this file's own argument
+    # for the aggressive default is that a turn is the expensive unit. 90.6% of
+    # read-backs happen within one tool call of the notice and 99.2% of them
+    # read the whole file, so the dominant pattern is not "fetched later if
+    # needed" — it is pointer, then immediately the same bytes anyway, with an
+    # extra assistant turn in between that re-reads the entire prefix.
+    #
+    # Priced from the same transcripts: the median turn re-reads 121,849 tokens
+    # of prefix. A round trip at the 1.5kB floor bought 1752 bytes, ~438 tokens.
+    # It cost 278 times what it saved.
+    #
+    # Swept in token-turns — bytes saved times the ~112 turns a result is still
+    # carried for, minus one prefix read per round trip — against four prices
+    # for a turn, because that price is the uncertain input:
+    #
+    #   floor     30k      60k    121849     197k
+    #   1500    +9.3M    -5.4M    -35.6M   -72.5M
+    #   6000   +19.5M   +16.1M     +9.0M    +0.4M
+    #  16000   +20.9M   +20.2M    +18.9M   +17.3M
+    #  48000   +19.5M   +19.4M    +19.2M   +18.9M
+    #
+    # 16kB is within 10% of optimal at every price and negative at none, which
+    # is what picks it over the per-column winners. At 1.5kB the vault is a net
+    # loss the moment a turn costs more than ~45k tokens, and the measured
+    # median is nearly three times that.
+    #
+    # What survives is 32 spills of the 1357 this corpus produced — and those 32
+    # carry 97% of the byte win while costing 21 round trips instead of 489. The
+    # rung ends up doing what it always claimed: taking the results that are
+    # genuinely enormous, and leaving everything else alone.
+    SPILL_BYTES = 16_000
 
     POLICY = {
       'off' => nil,

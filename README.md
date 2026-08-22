@@ -59,7 +59,7 @@ The reference carries the head of what it withheld on purpose. The risk is not t
 | `safe` | Only rewrites that discard nothing, plus the ledger. For the afternoon you suspect a compressor ate the line you needed. |
 | `full` | Compressors and the ledger, at the measured floors. |
 | `ultra` | A lower byte floor and a thinner margin — more rewrites, smaller wins each. |
-| `volatile` | Default. `ultra` plus the vault: anything over 1.5 kB that no compressor claimed goes to a file and comes back as its two ends and a path. **-62%** at delivery on a real corpus, and the larger win once the read-back is counted. |
+| `volatile` | Default. `ultra` plus the vault: anything over 16 kB that no compressor claimed goes to a file and comes back as its two ends and a path. **-14%** at delivery on a real corpus — a small number on purpose, see [why](#and-a-followed-pointer-costs-a-turn-which-is-the-expensive-unit). |
 
 #### Why the default is the aggressive one
 
@@ -89,7 +89,7 @@ This used to read "the model would have to read back 77% of everything spilled b
 
 **the model reads back 80% of everything spilled** — and the rate holds between 69% and 85% across 36 separate sessions over nine days. It is the behaviour, not an outlier, and it sits above the margin this file called safe.
 
-A followed pointer costs the pointer *plus* the bytes, so spilling is `N` against `280 + rN` and only wins above `280 / (1 - r)`. That is the whole reason the floor is 1.5 kB and not 500 B:
+A followed pointer costs the pointer *plus* the bytes, so spilling is `N` against `280 + rN` and only wins above `280 / (1 - r)` — about 1.4 kB at the measured rate. That is already enough to rule out the 500 B the floor sat at for four versions:
 
 | spilled | count | read back | net |
 |---|---|---|---|
@@ -100,9 +100,35 @@ A followed pointer costs the pointer *plus* the bytes, so spilling is `N` agains
 
 59% of spills were a net loss, and **31 results carry 97% of the win**. The vault is emphatically worth having — it is just worth having on large results, which is what it was always claimed to be for and not what it was set to do.
 
-The uncomfortable part, stated plainly: **on the delivery-side number this repo has always quoted, raising the floor looks like a regression.** `bin/lean analyze` over the same transcripts reports -74% at 500 B and -62% at 1.5 kB. That number counts what the pointer withholds the moment it is handed over and never asks what happens next, which is the same one-sided accounting that set the floor at 500 B to begin with. Net of the read-back it measures the other way: **+791 kB at 500 B, +856 kB at 1.5 kB**, on the 1357 spills whose fate could actually be traced.
+#### And a followed pointer costs a turn, which is the expensive unit
 
-One assumption is worth naming, because it is the load-bearing one: the 80% was observed *at the old floor*. Raising it means the 797 small results are simply delivered, which needs no assumption at all — but the rate for what still spills is taken to hold. If following a pointer turns out to be much rarer for large results than small ones, this floor is too high, and the way to find out is to re-run the pairing above.
+Counting bytes is still one-sided. Two more numbers from the same pairing:
+
+- **90.6%** of read-backs happen within **one tool call** of the notice, median gap 1;
+- **99.2%** of them read the whole file, not a slice.
+
+So the dominant pattern is not "fetched later, if it turns out to matter". It is: pointer, then immediately the same bytes anyway, with an extra assistant turn wedged in between. And [the argument for the aggressive default](#why-the-default-is-the-aggressive-one) is precisely that a turn is not free — it re-reads the whole accumulated prefix. Measured over 32,199 assistant turns in these transcripts, **the median turn re-reads 121,849 tokens**.
+
+At the 1.5 kB floor a round trip bought 1752 bytes, about 438 tokens. It cost 278 times what it saved.
+
+Swept in token-turns — bytes saved times the ~112 turns a result is still carried for, minus one prefix read per round trip — against four prices for a turn, since that price is the uncertain input:
+
+| floor | turn = 30k | 60k | **121,849 (measured)** | 197k |
+|---|---|---|---|---|
+| 1.5 kB | +9.3M | −5.4M | **−35.6M** | −72.5M |
+| 6 kB | +19.5M | +16.1M | +9.0M | +0.4M |
+| **16 kB** | **+20.9M** | **+20.2M** | +18.9M | +17.3M |
+| 48 kB | +19.5M | +19.4M | +19.2M | +18.9M |
+
+16 kB is within 10% of optimal at every price and negative at none, which is what picks it over the per-column winners. What survives is **32 spills of the 1357** this corpus produced — and those 32 carry 97% of the byte win at 21 round trips instead of 489.
+
+#### What that costs on the number this repo used to quote
+
+`bin/lean analyze` reports **-74% at 500 B, -62% at 1.5 kB, and -14% at 16 kB.** That is not a footnote, it is the headline moving by sixty points, and it is worth being blunt about why: the delivery-side number was never the objective. It counts bytes withheld at the moment of handover and charges nothing for fetching them back or for the turn spent doing it. Optimising it is what put the floor at 500 B, where the rung was losing on 59% of its own firings.
+
+The vault is now what it always claimed to be — the rung for results that are genuinely enormous — and it is a much smaller rung than the old number implied.
+
+Two assumptions carry this, both worth naming. The 80% was observed *at the old floor*; the small results now delivered whole need no assumption, but the rate for what still spills is taken to hold. And the token-turn arithmetic is a model, not a measurement — the four inputs to it are measured, the multiplication is not. Re-running the pairing above is how to check both.
 
 Making the pointer cheap is still worth doing — a 150 B preview instead of 250 B (the *same* results spill, so it is free), a path cut from 123 B to ~72 B by hashing the session id and capping the slug, and the explanation said once per window rather than once per spill. But the floor is not simply what a pointer costs, which is the mistake that put it at 500 B: it is what a pointer costs **divided by how often the pointer is the last word**. At a 20% miss rate a 280 B pointer needs 1.4 kB of content behind it before it pays, and every earlier number in this section was computed as though the miss rate were 100%.
 
@@ -336,7 +362,7 @@ Saídas de suite de teste são verbosas: dots de progresso, seed, tabelas de pro
 
 **A reescrita mais barata é a que não acontece.** Antes de qualquer compressor rodar, o resultado é conferido contra o que a sessão já mostrou ao modelo: `git status` rodado quatro vezes manda os mesmos bytes quatro vezes, e um arquivo lido no começo da task e relido no fim vai duas. Repetição volta como ponteiro (`byte-identical to Read app/… from 6 tool calls back — 8.3kB, 214 lines withheld`) mais as duas primeiras linhas, que existem pro caso de uma compactação de contexto ter apagado a ocorrência original. O match é por digest do resultado inteiro — um byte diferente e o arquivo vai completo de novo. **A janela de recência é medida em bytes de saída que passaram, não em número de chamadas** (padrão 250 kB): quarenta leituras de um arquivo de 200 linhas e quarenta `git status` empurram quantidades muito diferentes de histórico pra fora. Nas sessões simuladas do bench isso vale de **-12% a -84%**, e é a única coisa que alcança o `Read`, onde não há ruído pra nenhum compressor tirar.
 
-**Níveis**: `/lean` mostra o nível atual e o quanto já economizou; `/lean safe` troca. `off` não toca em nada, `safe` só aceita reescrita que não descarta nada (mais o ledger), `full` roda os compressores nos pisos medidos, `ultra` baixa o piso e aceita ganho menor, e `volatile` — **o padrão** — liga o **vault**: o que passa de 1,5 kB e nenhum compressor reclamou vai pra um arquivo e volta como as duas pontas mais o caminho exato, e o meio fica a um `Read` de distância. No corpus real: `full` e `ultra` dão -6%, `volatile` dá **-62%** na entrega — e mais que isso quando se conta a volta ao disco, que é o número que faltava. O padrão é o agressivo porque **um byte não é pago uma vez**: 94,7% da conta de tokens é cache read (o prefixo relido a cada turno) e uma sessão tem 225 turnos em média, então um resultado admitido na janela é pago uma vez por turno restante — 27% da conta inteira é tool output carregado. O nível é gravado por diretório de trabalho e lido a cada chamada — não precisa reiniciar nada.
+**Níveis**: `/lean` mostra o nível atual e o quanto já economizou; `/lean safe` troca. `off` não toca em nada, `safe` só aceita reescrita que não descarta nada (mais o ledger), `full` roda os compressores nos pisos medidos, `ultra` baixa o piso e aceita ganho menor, e `volatile` — **o padrão** — liga o **vault**: o que passa de 16 kB e nenhum compressor reclamou vai pra um arquivo e volta como as duas pontas mais o caminho exato, e o meio fica a um `Read` de distância. No corpus real: `full` e `ultra` dão -6%, `volatile` dá **-14%** na entrega — número pequeno de propósito: seguir um ponteiro custa um turno, e um turno relê 121.849 tokens de prefixo, então o vault só paga em resultado realmente enorme. O padrão é o agressivo porque **um byte não é pago uma vez**: 94,7% da conta de tokens é cache read (o prefixo relido a cada turno) e uma sessão tem 225 turnos em média, então um resultado admitido na janela é pago uma vez por turno restante — 27% da conta inteira é tool output carregado. O nível é gravado por diretório de trabalho e lido a cada chamada — não precisa reiniciar nada.
 
 O compressor de diff é o que mais economiza, porque uma dependência vendorada sozinha é maior que tudo que um revisor de fato lê. Hunk escrito à mão passa **byte a byte**; corpo de arquivo gerado (`vendor/`, lockfile, `app/assets/builds/`, `*.min.js`, source map) vira uma linha que ainda mostra o caminho e o `+N/-M`. Num commit real de vendoring do CodeMirror 6: **651.833 B → 13.247 B (-97%)**, de ~163k para ~3,3k tokens. `db/schema.rb` fica de fora de propósito — é o arquivo que mostra o que a migration realmente fez.
 

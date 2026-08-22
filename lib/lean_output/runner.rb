@@ -114,12 +114,23 @@ module LeanOutput
     end
     private_class_method :compressed
 
-    # The last rung, and it used to be the only one that could destroy
-    # something. It fires almost exclusively on a compressed result — raw
-    # output this big was spilled two lines up — and the vault had declined
-    # that result precisely *because* a compressor claimed it. So a failing
-    # suite arrived distilled to 8kB of failures, got cut to 4kB, and the
-    # failures past the cut had no path back from anywhere.
+    # The last rung, and the only one that destroys anything. It applies to a
+    # rewrite and never to raw output, which used to be true only by accident:
+    # "raw output this big was spilled a rung earlier" held while the spill
+    # floor sat below the cap, and stopped holding the moment the floor went
+    # above it. Left implicit, raising the floor to 16kB would have quietly
+    # pointed the one destructive rung at every unclaimed result between 2kB
+    # and 16kB — the range the vault had just been told to leave alone.
+    #
+    # So the condition is written down instead of inferred. A result no rung
+    # claimed passes through whole, which is both the intent and the fail-safe
+    # this file already promises everywhere else: when a rung declines, what
+    # the model gets is what it would have got without the plugin.
+    #
+    # It fires on a compressed result, where the vault had declined precisely
+    # *because* a compressor claimed it. So a failing suite arrived distilled
+    # to 8kB of failures, got cut to 4kB, and the failures past the cut had no
+    # path back from anywhere.
     #
     # Storing the original here costs one write on a rung that already ran and
     # buys the ceiling the same promise every other rung makes: what left the
@@ -134,7 +145,9 @@ module LeanOutput
     # occurrence reached the model whole before it promises a later one that the
     # bytes are already in the window.
     def self.clip(session, label, text, output, policy)
-      clipped = Text.clip(text, policy[:cap]) or return [text.equal?(output) ? nil : text, nil]
+      return [nil, nil] if text.equal?(output)
+
+      clipped = Text.clip(text, policy[:cap]) or return [text, nil]
 
       sizes = { from: Text.human(text.bytesize), to: Text.human(policy[:cap]) }
       path = Vault.store(session, label, output)

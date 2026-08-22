@@ -60,13 +60,24 @@ module LeanOutput
     # three calls against 11.1% of passthroughs — the control is the higher of
     # the two, so the ceiling was not sending anyone back for what it cut.
     #
-    # So the knob was turned. What 2000B clips is chained commands and bulk row
-    # sets; every single-tool compressor output in the corpus lands at 1095B or
-    # under, so no rspec, rubocop, brakeman or cargo verdict is truncated by it.
-    # That is the line to hold on the next turn as well: below ~1100B a ceiling
-    # stops working the tail and starts cutting into distilled signal, which is
-    # a different trade than this one and needs its own argument.
-    CAP_BYTES = 2_000
+    # So the knob was turned, to 2000B, on the same one-sided accounting that
+    # put the spill floor at 500B — and it is the same mistake, in the rung
+    # where it costs most. Every clip in 152 transcripts, all 17 of them, cut a
+    # compressed result between 2,048B and 8,192B. None was above 16kB.
+    #
+    # A followed clip is worse than a followed spill. The vault stores `output`,
+    # so reading back a clipped result does not return the 8kB of distilled
+    # failures that were cut — it returns the raw original the compressor had
+    # already thrown most of away. 8 of the 17 were read back. The rung pays a
+    # turn, re-delivers more bytes than it removed, and is the only one here
+    # that destroys anything on the way.
+    #
+    # At 16kB it fires on nothing this corpus contains, which is the point: it
+    # stops being a routine rewrite and goes back to being what its own comment
+    # claims it is — the guard against a compressed result that came out
+    # enormous anyway. It coincides with SPILL_BYTES because it is the same
+    # arithmetic about the same round trip, not because the two are linked.
+    CAP_BYTES = 16_000
 
     # Where an unclaimed result stops being worth carrying and starts being
     # worth pointing at.
@@ -136,8 +147,19 @@ module LeanOutput
 
     POLICY = {
       'off' => nil,
-      'safe' => { min_bytes: 400, ratio: 0.85, lossless_only: true },
-      'full' => { min_bytes: 400, ratio: 0.70, lossless_ratio: 0.85 },
+      # `min_bytes` is 200 everywhere now. It used to be 400 here and 200 at the
+      # aggressive levels, on the reasoning that a conservative level should
+      # rewrite less — but the thing this floor gates is the ledger, and the
+      # ledger is the one rung with no round trip to be conservative about: a
+      # reference is read in place, never fetched. Measured, a reference is 133B
+      # at the median and 236B at its largest, and the `ratio` gate below
+      # already refuses any that fails to beat the result it replaces.
+      #
+      # The 200..400B band it excluded holds 1187 results in this corpus, 159 of
+      # them repeats — ~26.5kB, or ~1.53M token-turns, that `full` and `safe`
+      # were declining to save for no reason either of them can state.
+      'safe' => { min_bytes: 200, ratio: 0.85, lossless_only: true },
+      'full' => { min_bytes: 200, ratio: 0.70, lossless_ratio: 0.85 },
       'ultra' => { min_bytes: 200, ratio: 0.85, lossless_ratio: 0.95 },
       'volatile' => { min_bytes: 200, ratio: 0.85, lossless_ratio: 0.95, cap: CAP_BYTES, spill: SPILL_BYTES }
     }.freeze

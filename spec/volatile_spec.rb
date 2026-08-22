@@ -220,10 +220,19 @@ RSpec.describe 'the volatile level' do
     # destroys anything silently acquires every unclaimed result in between —
     # the exact range the vault had just been told to leave alone. The rule is
     # written down now, so the two constants can move independently.
-    it 'never cuts raw output, however far the spill floor is above the cap' do
+    # The cap and the floor now hold the same value, so the band where this
+    # could go wrong is empty and no fixture can reach it. The rule still has to
+    # be true if they ever part again, so the dangerous configuration is asked
+    # for directly rather than waited for: a cap far below the floor, and raw
+    # output between them. Cutting it would point the one destructive rung at
+    # every result the vault was just told to leave alone.
+    it 'never cuts raw output, even with the cap set far below the floor' do
+      allow(LeanOutput::Mode).to receive(:policy).and_return(
+        min_bytes: 200, ratio: 0.85, lossless_ratio: 0.95, cap: 2_000, spill: 16_000
+      )
       raw = (1..200).map { |n| "line #{n} that no compressor will ever claim #{n * 7919}" }.join("\n")
 
-      expect(raw.bytesize).to be_between(LeanOutput::Mode::CAP_BYTES, LeanOutput::Mode::SPILL_BYTES)
+      expect(raw.bytesize).to be_between(2_000, 16_000)
       expect(bash('cat middling.log', raw)).to be_nil
     end
 
@@ -236,12 +245,21 @@ RSpec.describe 'the volatile level' do
     # distilled failures, which the ceiling then cuts to 4kB — and the vault had
     # declined the raw output two lines earlier, precisely because a compressor
     # claimed it. Failures past the cut were unrecoverable from anywhere.
+    # The 21-failure fixture compresses to 8.4kB and no longer reaches a 16kB
+    # ceiling — which is the point of the new cap, not an accident of it. What
+    # still has to work is the guard, so the input here is that fixture's own
+    # failure block three times over: a 63-failure run, 152kB raw, 22.6kB after
+    # the compressor, which is the shape of breakage the rung now exists for.
+    def broad_failure(times)
+      raw = File.read('spec/fixtures/rspec_broad_failure.txt')
+      head, _, tail = raw.partition(/^Failures:\n/)
+      section, _, rest = tail.partition(/^Finished in /)
+
+      "#{head}Failures:\n#{section * times}Finished in #{rest}"
+    end
+
     it 'stores the original of a compressed result it has to cut' do
-      # A real 21-failure run, not the 3-failure fixture repeated: repeats
-      # compress away and never reach the ceiling, which is why this went
-      # unnoticed. It takes a genuinely broad breakage to trigger, and by then
-      # the failures past the cut are exactly what someone came to read.
-      pointer = bash('bundle exec rspec', File.read('spec/fixtures/rspec_broad_failure.txt'))
+      pointer = bash('bundle exec rspec', broad_failure(3))
 
       expect(pointer).to include('the middle is gone from here')
       expect(File.read(vault_path(pointer))).to include('705 examples, 21 failures')
@@ -249,10 +267,21 @@ RSpec.describe 'the volatile level' do
 
     it 'says so plainly when it had to cut with nowhere to store the original' do
       ENV['LEAN_OUTPUT_STATE_DIR'] = '/proc/nowhere-the-vault-can-write'
-      pointer = bash('bundle exec rspec', File.read('spec/fixtures/rspec_broad_failure.txt'))
+      pointer = bash('bundle exec rspec', broad_failure(3))
 
       expect(pointer).to include('re-run the command narrower')
       expect(pointer).not_to include('full text at')
+    end
+
+    # And the corollary the new cap is chosen for: a suite that fails broadly
+    # enough to compress to 8kB now arrives whole. Cutting it would have handed
+    # back a path to the 53kB raw original — more bytes than it removed, one
+    # turn later — which is what made the old 2kB ceiling a losing trade.
+    it 'delivers a large compressed result rather than cutting it' do
+      result = bash('bundle exec rspec', broad_failure(1))
+
+      expect(result).not_to include('the middle is gone from here')
+      expect(result).to include('705 examples, 21 failures')
     end
   end
 

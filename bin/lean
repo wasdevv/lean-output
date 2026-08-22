@@ -30,6 +30,15 @@ end
 # Replays your own transcripts through the hook. Slow on purpose — it reads
 # every result you have ever seen, which is the only honest way to answer where
 # the bytes are rather than where the compressors happen to point.
+# Whether the model follows the pointers, which is the number every threshold
+# in Mode rests on. Answered by pairing each spill notice with a later Read of
+# the path it named — so it measures the plugin against its own behaviour,
+# and the answer moves when that behaviour does.
+def readback(root)
+  spills = LeanOutput::Readback.collect(root: root || LeanOutput::Readback::DEFAULT_ROOT)
+  puts LeanOutput::Readback.report(spills)
+end
+
 def analyze(root)
   results = LeanOutput::Corpus.analyze(root: root || LeanOutput::Corpus::DEFAULT_ROOT)
   puts LeanOutput::Corpus.report(results)
@@ -72,8 +81,9 @@ argument = ARGV.first
 case argument
 when nil then report(cwd)
 when '-v', '--version' then puts LeanOutput::VERSION
-when '-h', '--help' then puts "usage: lean [#{LeanOutput::Mode::LEVELS.join('|')}|vault|analyze [root]]"
+when '-h', '--help' then puts "usage: lean [#{LeanOutput::Mode::LEVELS.join('|')}|vault|analyze [root]|readback [root]]"
 when 'analyze' then analyze(ARGV[1])
+when 'readback' then readback(ARGV[1])
 when 'vault' then vault
 else
   level = LeanOutput::Mode.write(cwd, argument)

@@ -62,6 +62,47 @@ RSpec.describe LeanOutput::Corpus do
     expect(analyze(@root).map(&:command).uniq).to eq(['bundle exec'])
   end
 
+  # The ranking picks the next compressor, so a label naming a shell prefix does
+  # not merely misreport — it aims the work somewhere there is no tool.
+  describe 'the label behind a setup prefix' do
+    def label(command)
+      described_class.label('tool_name' => 'Bash', 'tool_input' => { 'command' => command })
+    end
+
+    it 'looks past a directory change joined with either operator' do
+      expect(label('cd /repo && git log --oneline')).to eq('git log')
+      expect(label('cd /repo; ls -la')).to eq('ls')
+    end
+
+    it 'looks past an exported variable the runner needs' do
+      expect(label('export PATH="$HOME/.asdf/shims:$PATH"; mix test')).to eq('mix test')
+    end
+
+    it 'looks past a bare assignment' do
+      expect(label('SP=/tmp/scratch; rspec spec/')).to eq('rspec')
+    end
+
+    it 'peels several of them' do
+      expect(label('cd /repo; export PATH=/x:$PATH; RAILS_ENV=test bundle exec rspec')).to eq('bundle exec')
+    end
+
+    it 'stops peeling rather than spinning on a pathological command' do
+      expect { label("#{'X=1; ' * 500}ls") }.not_to raise_error
+    end
+
+    it 'looks past an assignment whose value is empty' do
+      expect(label('BUNDLE_LOCKFILE= BUNDLE_GEMFILE=$PWD/Gemfile bundle exec rspec')).to eq('bundle exec')
+    end
+
+    it 'names the runner, not the heredoc the shell handed it' do
+      expect(label("python3 - <<'PY'\nprint(1)\nPY")).to eq('python3')
+    end
+
+    it 'leaves a command that is only setup named after the setup' do
+      expect(label('export PATH=/x:$PATH')).to eq('export')
+    end
+  end
+
   it 'counts a result no compressor claims as unclaimed rather than skipping it' do
     transcript(@root, 'project-a', [call('t1', 'Bash', { 'command' => 'echo hi' }),
                                     result('t1', bash_response('hi'))])
@@ -87,6 +128,43 @@ RSpec.describe LeanOutput::Corpus do
 
     expect(report.lines[1]).to include('echo')
     expect(report).to match(/4 results|5 results/)
+  end
+
+  # The ranking says which command to write a compressor for; this says whether
+  # to write one at all. A residue under the vault floor is one no pointer can
+  # ever take, and the two tables disagreeing would be worse than either alone.
+  describe 'the residue by result size' do
+    it 'files each result under the rung that can actually reach it' do
+      entries = [['t1', 'x' * 50], ['t2', 'x' * 5_000], ['t3', 'x' * 40_000]].flat_map do |id, body|
+        [call(id, 'Bash', { 'command' => 'echo hi' }), result(id, bash_response(body))]
+      end
+      transcript(@root, 'project-a', entries)
+
+      report = described_class.report(analyze(@root))
+
+      expect(report).to match(/under 200B — no rung looks\s+1 calls/)
+      expect(report).to match(/200B–15\.6kB — compressors only\s+1 calls/)
+      expect(report).to match(/over 15\.6kB — the vault takes it\s+1 calls/)
+    end
+
+    # The edges are read from Mode rather than restated, so a floor that moves
+    # cannot leave this table describing the old one.
+    it 'names the floors the policy actually uses' do
+      transcript(@root, 'project-a', [call('t1', 'Bash', { 'command' => 'echo hi' }),
+                                      result('t1', bash_response('x' * 5_000))])
+
+      report = described_class.report(analyze(@root))
+
+      expect(report).to include(LeanOutput::Text.human(LeanOutput::Mode::SPILL_BYTES))
+      expect(report).to include(LeanOutput::Text.human(described_class::POLICY_FLOOR))
+    end
+
+    it 'shows an empty band rather than dropping it' do
+      transcript(@root, 'project-a', [call('t1', 'Bash', { 'command' => 'echo hi' }),
+                                      result('t1', bash_response('x' * 5_000))])
+
+      expect(described_class.report(analyze(@root))).to match(/over 15\.6kB.+\s0 calls/)
+    end
   end
 
   it 'leaves the live state directory alone while replaying' do

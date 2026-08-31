@@ -136,6 +136,12 @@ LEDGER_SESSIONS = [
   { name: "the agent runs git status four times",
     steps: [["Bash", "git status", "git_show_plain.txt"]] * 4,
     hits: 3 },
+  # The one session where the earlier occurrence was never in the window whole:
+  # a compressor claimed it, so the model holds a summary and the vault holds
+  # nothing. The reference has to beat that summary, not the raw output.
+  { name: "the same failing suite run twice",
+    steps: [["Bash", "bundle exec rspec", "rspec_failures.txt"]] * 2,
+    hits: 1 },
   { name: "an MCP result the agent asks for twice",
     steps: [["mcp__insforge__query", "query", "mcp_query_rows.json"]] * 2,
     hits: 1 },
@@ -378,7 +384,8 @@ end
 
 def replay(simulation, session)
   with_env("LEAN_OUTPUT_WINDOW" => simulation[:window]) do
-    steps = simulation[:steps].map { |step| replay_step(step, session, simulation[:name]) }
+    best = {}
+    steps = simulation[:steps].map { |step| replay_step(step, session, simulation[:name], best) }
 
     [steps.sum { |before, _, _| before }, steps.sum { |_, after, _| after },
      steps.count { |_, _, hit| hit }]
@@ -387,7 +394,7 @@ end
 
 # [bytes in, bytes out, was it a reference]. Bash is the odd one out on purpose:
 # it carries a command and no tool name, which is what the hook sees.
-def replay_step((tool, name, file, suffix), session, label)
+def replay_step((tool, name, file, suffix), session, label, best = {})
   body = "#{fixture(file)}#{suffix}"
   scenario = case tool
              when "Read" then { tool: "Read", path: name }
@@ -397,11 +404,16 @@ def replay_step((tool, name, file, suffix), session, label)
   result = updated(LeanOutput::Runner.call(payload_for(scenario, body, session)))
   hit = !result.nil? && result.include?("byte-identical to")
 
-  # The reference exists to be shorter. One that is not would be a rung that
-  # costs context to save context.
-  fail!("REFERENCE NOT SMALLER in #{label}") if hit && result.bytesize >= body.bytesize
+  # The reference exists to be shorter than what would otherwise be sent, and
+  # that is not always the raw result: when a compressor claimed the earlier
+  # occurrence, the alternative is the summary, which is far smaller. Comparing
+  # against the raw bytes there would pass a rung that cost context to save it.
+  after = (result || body).bytesize
+  alternative = best[body] || body.bytesize
+  fail!("REFERENCE NOT SMALLER in #{label}: #{after}B against #{alternative}B") if hit && after >= alternative
+  best[body] = [alternative, after].min unless hit
 
-  [body.bytesize, (result || body).bytesize, hit]
+  [body.bytesize, after, hit]
 end
 
 ledger_rows = LEDGER_SESSIONS.each_with_index.map do |simulation, index|

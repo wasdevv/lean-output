@@ -50,55 +50,59 @@ module LeanOutput
       previous = session.lookup(digest(output)) or return nil
       distance = session.bytes - previous[:bytes].to_i
       return nil if distance > window
-      return nil unless recoverable?(previous, output)
+      # A path is the one pointer that can outlive what it names: the vault
+      # evicts whole session directories past SESSIONS and whole files past
+      # KEEP, and neither touches the `seen` entry quoting the path — while a
+      # repeat refreshes that entry's recency without writing a file.
+      return nil if previous[:path] && !File.exist?(previous[:path])
+
       # The entry was written after its own call advanced the counter, and this
       # call has not advanced it yet, so the immediately preceding call sits at a
       # difference of zero. +1 makes the reference say "1 tool call back".
       calls = session.seq - previous[:seq].to_i + 1
-      "#{marker(previous, calls, output)}\n#{head(output)}"
+      text = "#{marker(previous, calls, output)}\n#{head(output)}"
+      # Pointing at a summary only pays if the pointer is shorter than saying
+      # the summary again — the compressor is deterministic, so `size` is
+      # exactly what the second delivery would cost.
+      return nil if summary?(previous, output) && text.bytesize >= previous[:size].to_i
+
+      text
     end
 
-    # A reference is only ever worth making if the thing it points back at is
-    # still reachable. There are exactly two ways it can be, and this is the
-    # whole rule:
-    #
-    #   - the earlier occurrence reached the model verbatim, so the bytes are in
-    #     the window and "withheld" is true;
-    #   - or it did not, and a file holds what the model did not get.
-    #
-    # Anything else is a pointer into nothing. A compressed result that fit
-    # under the ceiling is the common case — the model got a distilled summary,
-    # nothing went to disk, and the old wording still claimed the raw lines were
-    # "withheld". Declining sends it back down the ladder, where the same
-    # compressor claims it again and the model gets the same distilled failures
-    # a second time: measured on rspec_failures.txt, 966B against the 135B the
-    # reference would have cost. That 831B is the whole price of the fix, and it
-    # is the same at every level — the vault never takes these, because a
-    # compressor claimed them.
-    #
-    # The file check belongs here too, because a path is the one pointer that
-    # can outlive what it names: the vault evicts whole session directories past
-    # SESSIONS and whole files past KEEP, and neither touches the `seen` entry
-    # quoting the path — while a repeat refreshes that entry's recency without
-    # writing a file.
-    def self.recoverable?(previous, output)
-      return File.exist?(previous[:path]) if previous[:path]
-
-      previous[:size].to_i >= output.bytesize
+    # Did the model get less than the raw bytes, with nothing on disk behind it?
+    # Then all it holds is a compressed rendering of this result, and that is the
+    # only thing a reference may claim.
+    def self.summary?(previous, output)
+      previous[:path].nil? && previous[:size].to_i < output.bytesize
     end
-    private_class_method :recoverable?
+    private_class_method :summary?
 
-    # Reached only when `recoverable?` said yes, so both arms are true claims.
+    # Three true things a reference can say, and no fourth:
+    #
+    #   - a file holds the raw bytes, so the pointer resolves;
+    #   - the earlier occurrence reached the model verbatim, so the raw lines are
+    #     in the window and "withheld" is true;
+    #   - or the model was given a summary of these bytes and nothing else.
+    #
+    # The third arm used to be declined outright, because the old wording had
+    # only the first two and would have claimed raw lines were "withheld" that
+    # the model never saw. Declining sent it back down the ladder, where the same
+    # compressor claimed it again and the model got the same distilled failures a
+    # second time: measured on rspec_failures.txt, 966B against the 160B a
+    # reference costs. Saying what actually happened — same bytes, same summary,
+    # already above — is both honest and 806B cheaper per repeat. It offers no
+    # file, because there is none; the summary in the window is the recovery.
     def self.marker(previous, calls, output)
       head = "[lean-output] byte-identical to #{previous[:label]} from #{plural(calls)} back — " \
              "#{Text.human(output.bytesize)}, #{output.lines.size} lines"
-      return "#{head} withheld" unless previous[:path]
-
       # Worded like the vault's own notice and no longer: this is paid on every
       # repeat of a spilled result, and the two extra facts a longer sentence
       # would add — that the earlier one was a pointer too, and why — change
       # nothing about what the reader does next.
-      "#{head}, full text at #{previous[:path]} (Read or grep it)"
+      return "#{head}, full text at #{previous[:path]} (Read or grep it)" if previous[:path]
+      return "#{head} withheld" unless summary?(previous, output)
+
+      "#{head}, same summary already shown there"
     end
     private_class_method :marker
 

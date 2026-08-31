@@ -43,8 +43,40 @@ module LeanOutput
       [format('%-20s %7s %9s %9s %8s', 'command', 'calls', 'MB', 'saved', 'unclaimed'),
        *ranked.map { |name, group| row(name, group) },
        '',
+       *bands(results),
+       '',
        summary(groups.values.sum { |group| group[:bytes] }, results)].join("\n")
     end
+
+    # The same residue by result size, because *which rung can reach it* is a
+    # question about size, not about which command produced it. The ranking above
+    # says what to write; this says whether to write anything at all — a residue
+    # sitting under the vault floor is one no pointer will ever take, and one
+    # under `min_bytes` is one no rung looks at.
+    #
+    # The edges are the live thresholds rather than round numbers, so moving a
+    # floor in Mode moves this table with it and the two cannot disagree.
+    def self.bands(results)
+      floor = POLICY_FLOOR
+      edges = [floor, Mode::SPILL_BYTES]
+      counted = results.group_by { |result| edges.count { |edge| result.bytes >= edge } }
+      names = ["under #{Text.human(floor)} — no rung looks",
+               "#{Text.human(floor)}–#{Text.human(Mode::SPILL_BYTES)} — compressors only",
+               "over #{Text.human(Mode::SPILL_BYTES)} — the vault takes it"]
+      left = results.sum { |result| result.bytes - result.saved }
+
+      names.each_with_index.map { |name, index| band_row(name, counted[index] || [], left) }
+    end
+
+    # Every level shares one floor; this reads it rather than restating it.
+    POLICY_FLOOR = Mode::POLICY.fetch('full').fetch(:min_bytes)
+
+    def self.band_row(name, list, left)
+      unclaimed = list.sum { |result| result.bytes - result.saved }
+      format('%-34s %7d calls %8.2fMB left %6d%%', name, list.size, mb(unclaimed),
+             left.zero? ? 0 : (100.0 * unclaimed / left).round)
+    end
+    private_class_method :band_row
 
     def self.tally(list)
       { calls: list.size, bytes: list.sum(&:bytes), saved: list.sum(&:saved),
@@ -101,13 +133,45 @@ module LeanOutput
     # Group by the shape of the command rather than the command, so 588 greps
     # for different strings answer as one line. `git diff` and `git status` stay
     # apart because the subcommand is what decides whether anything can claim it.
+    #
+    # This ranking is what picks the next compressor, so a label that names the
+    # wrong thing does not merely misreport — it aims the work. Stripping only
+    # `cd X &&` was that mistake: over 61 real projects it filed 814 results
+    # under `cd`, 408 under `export` and 315 under a shell variable, and every
+    # tool behind those prefixes was invisible to the ranking. `mix` did not
+    # appear at all, hidden behind the `export PATH=…;` its own runner needs.
+    #
+    # So the prefixes come off until something that is not a prefix is left:
+    # a directory change, an assignment, an `env`/`export` — separated by `;`
+    # as well as `&&`, since a setup step that must not gate the real command is
+    # exactly what a `;` is for.
+    #
+    # A leading assignment is the one that needs no separator at all:
+    # `RAILS_ENV=test bundle exec rspec` is one command with a prefix, and by
+    # shell rules a first word containing `=` can only be that. The value may be
+    # empty — `BUNDLE_LOCKFILE= bundle exec rspec` is how you unset one for a
+    # single call, and it hid 362 results behind a label that was an equals sign.
+    SETUP = /\A(?:(?:cd\s+\S+|env(?:\s+\w+=\S*)+|export\s+[^;&|]+)\s*(?:;|&&)\s*|\w+=\S*\s*(?:;|&&)?\s+)/
+    # Runners whose first word says nothing: the subcommand is the tool.
+    RUNNERS = %w[bundle bin npm npx pnpm yarn cargo ruby python3 python node git gh rails
+                 mix docker kubectl make go dotnet composer php artisan].freeze
+    # Neither a flag nor a subcommand: redirections and heredocs are the shell
+    # talking about the command, and taking one as the subcommand produced
+    # `python3 <<'PY'` as a heading over 899 results.
+    SYNTAX = /\A[-<>|&]/
+
     def self.label(payload)
       return payload['tool_name'].to_s unless payload['tool_name'] == 'Bash'
 
-      command = payload.dig('tool_input', 'command').to_s.strip.sub(/\A(cd|env)\s+\S+\s*&&\s*/, '')
-      words = command.split(/\s+/).reject { |word| word.start_with?('-') }
+      command = payload.dig('tool_input', 'command').to_s.strip
+      # Bounded rather than `while`: a pathological command must not spin here,
+      # and four setup steps in front of one tool is already unusual.
+      4.times { command = command.sub(SETUP, '') }
+      # Only the first line names the command. Past it is the heredoc body, and
+      # reading that gave `python3 import` — a label naming a Python keyword.
+      words = command.lines.first.to_s.split(/\s+/).grep_v(SYNTAX)
       head = words.first.to_s.split('/').last
-      %w[bundle bin npm cargo ruby git gh rails].include?(head) ? words.take(2).join(' ') : head
+      RUNNERS.include?(head) ? words.take(2).join(' ') : head
     end
 
     # Walks the transcripts pairing each tool_use with the result that came

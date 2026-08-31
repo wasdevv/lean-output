@@ -107,39 +107,81 @@ RSpec.describe LeanOutput::Ledger do
     end
   end
 
-  # The half of the invariant the vault fix missed. A compressor claims the
-  # result, it fits under the ceiling, so nothing reaches the vault and nothing
-  # reaches disk — and the model holds a distilled summary, not the raw lines.
-  # Saying "100 lines withheld" there is the same lie the vault case made, minus
-  # even the file to recover from, and it is the common case: this is the path
-  # `full`, the shipped default, takes on every repeated test run.
+  # The common case, and the one the ledger declined for two releases. A
+  # compressor claims the result, it fits under the ceiling, so nothing reaches
+  # the vault and nothing reaches disk — and the model holds a distilled summary,
+  # not the raw lines. Saying "100 lines withheld" there would be a lie with not
+  # even a file to recover from; saying nothing sent the whole summary a second
+  # time. The third thing is what actually happened, and it is 831B shorter.
   describe 'a repeat of something the model only ever saw compressed' do
     let(:failures) { fixture('rspec_failures.txt') }
 
-    def rspec_run
+    def rspec_run(session = 'compressed-repeat')
       LeanOutput::Runner.call(
-        'tool_name' => 'Bash', 'session_id' => 'compressed-repeat',
+        'tool_name' => 'Bash', 'session_id' => session,
         'tool_input' => { 'command' => 'bundle exec rspec' },
         'tool_response' => { 'stdout' => failures, 'stderr' => '' }
       )&.dig('hookSpecificOutput', 'updatedToolOutput', 'stdout')
     end
 
-    it 'delivers the summary again rather than claiming the lines are withheld' do
+    it 'points at the summary the model was given, without re-sending it' do
       first = rspec_run
       second = rspec_run
 
-      expect(second).not_to include('withheld')
-      expect(second).to include('rspec ./')
-      expect(second.bytesize).to eq(first.bytesize)
+      expect(second).to include('byte-identical to `bundle exec rspec`')
+      expect(second).to include('1 tool call back')
+      expect(second.bytesize).to be < first.bytesize
     end
 
-    # The saving is real, so declining has to stay narrow: a result that reached
-    # the model verbatim is still deduplicated, and that is the case the ledger
-    # was built for.
+    # It has no file and the model never saw the raw lines, so the two older
+    # wordings are both unavailable to it.
+    it 'claims neither the raw lines nor a file it does not have' do
+      rspec_run
+      second = rspec_run
+
+      expect(second).not_to include('withheld')
+      expect(second).not_to include('full text at')
+      expect(second).to include('same summary already shown')
+    end
+
+    it 'goes back to compressing when a single byte differs' do
+      rspec_run
+      LeanOutput::Runner.call(
+        'tool_name' => 'Bash', 'session_id' => 'compressed-repeat',
+        'tool_input' => { 'command' => 'bundle exec rspec' },
+        'tool_response' => { 'stdout' => "#{failures} ", 'stderr' => '' }
+      ).dig('hookSpecificOutput', 'updatedToolOutput', 'stdout').tap do |text|
+        expect(text).to include('rspec ./')
+        expect(text).not_to include('byte-identical')
+      end
+    end
+
+    # `remember` keeps the *best* delivery, so a chain cannot alternate between
+    # pointer and summary: the third occurrence still points at a summary, not
+    # at the pointer the second one got.
+    it 'keeps pointing on every further repeat' do
+      4.times { rspec_run('compressed-chain') }
+      last = rspec_run('compressed-chain')
+
+      expect(last).to include('same summary already shown')
+      expect(last).to include('1 tool call back')
+    end
+
+    # The saving is real, so the older arms have to stay exactly as narrow: a
+    # result that reached the model verbatim still says withheld.
     it 'still references a repeat that was delivered verbatim' do
       read('app/models/user.rb', body)
 
       expect(updated(read('app/models/user.rb', body))).to include('lines withheld')
+    end
+
+    # A pointer costs more than a two-line summary would, so it declines and the
+    # compressor speaks again — the rung exists to be smaller, not to fire.
+    it 'declines when the summary was cheaper than the pointer' do
+      previous = { path: nil, size: 20, label: 'x', seq: 1, bytes: 0 }
+      session = instance_double(LeanOutput::Session, lookup: previous, bytes: 0, seq: 2)
+
+      expect(described_class.reference(session, 'x' * 5_000)).to be_nil
     end
   end
 

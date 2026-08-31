@@ -194,6 +194,33 @@ RSpec.describe 'bin/compress' do
       expect(updated).to include('1 tool call back')
     end
 
+    # The path the shipped default takes on every re-run of an unchanged suite,
+    # end to end through the real binary: a compressor claims the first run, so
+    # nothing is on disk and the model holds only a summary. The second run has
+    # to point at that summary rather than produce it again.
+    it 'points a repeated Bash result at the summary the model already has' do
+      payload = payload_for('bundle exec rspec', fixture('rspec_failures.txt'))
+      first = updated_text(JSON.parse(run_hook(payload).first))
+      stdout, _, status = run_hook(payload)
+
+      expect(status.exitstatus).to eq(0)
+      second = updated_text(JSON.parse(stdout))
+      expect(second).to include('byte-identical to `bundle exec rspec`')
+      expect(second).to include('same summary already shown there')
+      expect(second).not_to include('withheld')
+      expect(second).not_to include('full text at')
+      expect(second.bytesize).to be < first.bytesize
+    end
+
+    it 'keeps pointing on a long chain rather than alternating' do
+      payload = payload_for('bundle exec rspec', fixture('rspec_failures.txt'))
+      4.times { run_hook(payload) }
+      updated = updated_text(JSON.parse(run_hook(payload).first))
+
+      expect(updated).to include('same summary already shown there')
+      expect(updated).to include('1 tool call back')
+    end
+
     it 'resends a Read whose content changed by a single byte' do
       run_hook(read_payload('lib/lean_output.rb', fixture('rspec_failures.txt')))
       stdout, _, status = run_hook(read_payload('lib/lean_output.rb', "#{fixture('rspec_failures.txt')} "))

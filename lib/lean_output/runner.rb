@@ -55,21 +55,26 @@ module LeanOutput
     # at, which is the only way this mechanism can fail quietly.
     def self.climb(session, tool, payload, output, policy)
       rewritten, hit, path = decide(session, tool, payload, output, policy)
+      # Built before anything is written down, because `respond` is where the
+      # rewrite can still fall through: a response shape `reshape` does not
+      # recognise leaves the host showing the original, and a ledger that
+      # recorded the summary would later point at one the model never saw.
+      response = rewritten && respond(payload, rewritten, output)
+      # What the model actually received, not what arrived here. A later
+      # reference has the original in hand — it is byte-identical by definition
+      # — so the original size is the one number it can always recompute, and
+      # the delivered size is the one it cannot.
+      delivered = response ? rewritten.bytesize : output.bytesize
 
       session.advance(output.bytesize)
       if deduplicable?(tool, output, policy)
-        # What the model actually received, not what arrived here. A later
-        # reference has the original in hand — it is byte-identical by
-        # definition — so the original size is the one number it can always
-        # recompute, and the delivered size is the one it cannot.
-        delivered = (rewritten || output).bytesize
         session.remember(Ledger.digest(output), Ledger.label(tool, payload), delivered, path)
       end
-      session.credit(output.bytesize, (rewritten || output).bytesize, hit: hit)
-      session.observe(Ledger.label(tool, payload), rewritten: !rewritten.nil?)
+      session.credit(output.bytesize, delivered, hit: hit && !response.nil?)
+      session.observe(Ledger.label(tool, payload), rewritten: !response.nil?)
       session.save
 
-      rewritten ? respond(payload, rewritten, output) : nil
+      response
     end
     private_class_method :climb
 

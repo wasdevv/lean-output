@@ -129,6 +129,32 @@ RSpec.describe 'the replacement mirrors the tool response shape' do
     expect(compress(payload)).to be_nil
   end
 
+  # `extract_output` reads stderr whether or not stdout is there; `reshape_hash`
+  # only knows where to put it back when the response carries a stdout key. So a
+  # result that arrived on stderr alone is compressed here and discarded by the
+  # host — the one live shape where the rewrite does not survive.
+  def stderr_only_payload
+    bash_payload(grep_hits, command: 'grep -rn "def " lib/')
+      .merge('session_id' => 'shape-stderr', 'tool_response' => { 'stderr' => grep_hits })
+  end
+
+  it 'leaves a result it cannot put back where it found it' do
+    expect(compress(stderr_only_payload)).to be_nil
+  end
+
+  # The ledger records what the model received, and here that is the original —
+  # the host threw the rewrite away. Recording the rewrite instead would make the
+  # next occurrence point at a summary nobody was ever shown.
+  it 'remembers the original when the host kept the original' do
+    2.times { compress(stderr_only_payload) }
+    text = compress(stderr_only_payload.merge('tool_response' => { 'stdout' => grep_hits,
+                                                                   'stderr' => '' }))['stdout']
+
+    expect(text).to include('byte-identical')
+    expect(text).to include('withheld')
+    expect(text).not_to include('same summary already shown')
+  end
+
   it 'never touches an image result' do
     payload = bash_payload(grep_hits)
     payload['tool_response']['isImage'] = true

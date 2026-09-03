@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'json'
 require 'tmpdir'
 
 # The rungs that keep state from growing forever, and the two gates that were
@@ -114,6 +115,69 @@ RSpec.describe 'housekeeping' do
                                              saved: 0, claimed: false, shape: nil)]
 
       expect(described_class.report(results)).not_to include('no compressor here')
+    end
+  end
+
+  describe LeanOutput::Readback do
+    def read_of(path, ranged: false)
+      input = { 'file_path' => path }
+      input['offset'] = 40 if ranged
+      { 'message' => { 'content' => [{ 'type' => 'tool_use', 'name' => 'Read', 'input' => input }] } }
+    end
+
+    def spilled(path, notice)
+      { 'message' => { 'content' => [{ 'type' => 'tool_result',
+                                       'content' => "head\n[lean-output] middle withheld — 40.0kB, " \
+                                                    "90 lines, full text at #{path} #{notice}\n" }] } }
+    end
+
+    def turn(prefix) = { 'message' => { 'usage' => { 'cache_read_input_tokens' => prefix } } }
+
+    def transcript(records)
+      dir = File.join(@dir, 'proj')
+      FileUtils.mkdir_p(dir)
+      File.write(File.join(dir, 'session.jsonl'), records.map { |r| JSON.generate(r) }.join("\n"))
+      described_class.collect(root: @dir)
+    end
+
+    let(:vault) { '/home/x/.cache/lean-output/vault/ab/0001-cat.txt' }
+
+    # The rate is a property of the wording, so a reworded pointer starts a new
+    # population. Averaged in, a fresh notice would be invisible under months of
+    # the old one — which is the experiment, not a detail of it.
+    it 'keeps the two notice wordings apart' do
+      spills = transcript([turn(1), spilled(vault, '(Read or grep it)'), turn(2),
+                           spilled("#{vault}2", '(grep or Read a range)'), turn(3)])
+
+      expect(spills.map(&:notice)).to contain_exactly(described_class::LEGACY, described_class::STEERED)
+    end
+
+    # Measured before the rewording: 1054 of 1060 read-backs took the whole
+    # file. A pointer followed that way hands everything back and spends a turn.
+    it 'counts a read-back that took a range apart from one that took the file' do
+      whole = transcript([turn(1), spilled(vault, '(Read or grep it)'), turn(2), read_of(vault), turn(3)])
+      expect(whole.first.ranged).to be(false)
+
+      ranged = transcript([turn(1), spilled(vault, '(Read or grep it)'), turn(2),
+                           read_of(vault, ranged: true), turn(3)])
+      expect(ranged.first.ranged).to be(true)
+    end
+
+    it 'leaves ranged unanswered for a pointer nobody followed' do
+      expect(transcript([turn(1), spilled(vault, '(Read or grep it)'), turn(2)]).first.ranged).to be_nil
+    end
+  end
+
+  describe LeanOutput::Calibration do
+    it 'keeps every calibration so drift can be told from noise' do
+      cwd = File.join(@dir, 'repo')
+      2.times do |i|
+        described_class.write(cwd, described_class::Result.new(spill: 3_000 * (i + 1), net: 1, spills: 40,
+                                                               roundtrips: 2, measured_at: '2026-09-03'))
+      end
+
+      expect(described_class.trend(cwd).size).to eq(2)
+      expect(described_class.trend(cwd).last).to include('5.9kB')
     end
   end
 

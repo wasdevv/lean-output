@@ -1,6 +1,6 @@
 ---
 description: Show or switch the lean-output compression level for this directory
-argument-hint: "[off|safe|full|ultra|volatile|vault|analyze|readback|calibrate|audit|rescan]"
+argument-hint: "[off|safe|full|ultra|volatile|vault|analyze|readback|calibrate|trend|audit|why|fixture|rescan]"
 allowed-tools: Bash(ruby:*)
 ---
 
@@ -20,6 +20,17 @@ against how often the model followed a pointer. All three only print.
 and stores it for this directory, with the date and the sample size behind it.
 `uncalibrate` goes back to the default. It refuses, and says so, on a corpus
 too small to answer.
+
+`analyze` takes `--since <days>` and `--project <name>`, because one ranking
+over every transcript ever written answers where the bytes *were*. `trend`
+prints every calibration this directory has had, so a floor that keeps landing
+on the same number can be told from one that is wandering.
+
+`why <file> [command]` says which gate declined a result — no compressor
+recognised it, it was under the floor, or the rewrite did not save enough —
+instead of leaving "unclaimed" to mean six things. `fixture <file> <name>`
+captures real output into `spec/fixtures/`, which is the step every compressor
+for a tool we do not support yet is actually blocked on.
 
 `audit <path>` takes a path from a pointer and replays the ladder against the
 stored original — what a compressor would drop, and whether every `file:line`

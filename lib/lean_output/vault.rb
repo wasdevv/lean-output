@@ -203,12 +203,43 @@ module LeanOutput
     # widths at once, where the prune deletes the file it just wrote and leaves
     # the old ones un-reclaimable. A number has neither problem and needs no
     # migration.
+    # A count was never a bound on disk: 400 spills of a megabyte is 400MB per
+    # session, twenty sessions deep. The size is the thing worth bounding, and
+    # the count now only decides the order files leave in.
+    MAX_BYTES = 64 * 1024 * 1024
+
     def self.prune(dir)
       files = Dir.glob(File.join(dir, '*.txt')).sort_by { |file| File.basename(file)[/\A\d+/].to_i }
-      return if files.size <= KEEP
-
-      FileUtils.rm_f(files.first(files.size - KEEP))
+      FileUtils.rm_f(doomed(files))
     end
     private_class_method :prune
+
+    # Oldest first until both bounds hold, and never the newest KEEP_MIN — a
+    # pointer is only checked when the model follows it, so a file deleted
+    # under a live pointer fails silently, and the cheapest insurance against
+    # that is refusing to reclaim the recent end no matter what the budget
+    # says. A session that genuinely holds 64MB in its newest hundred files is
+    # over budget and stays over budget, which is the right way round: disk is
+    # recoverable and a dangling pointer is not.
+    KEEP_MIN = 100
+
+    def self.doomed(files)
+      keep = [KEEP, KEEP_MIN].min
+      candidates = files.first([files.size - keep, 0].max)
+      over_count = [files.size - KEEP, 0].max
+      doomed = candidates.first(over_count)
+
+      budget = files.sum { |file| File.size(file) } - (doomed.sum { |file| File.size(file) })
+      candidates.drop(doomed.size).each do |file|
+        break if budget <= MAX_BYTES
+
+        budget -= File.size(file)
+        doomed << file
+      end
+      doomed
+    rescue StandardError
+      []
+    end
+    private_class_method :doomed
   end
 end

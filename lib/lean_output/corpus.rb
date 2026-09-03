@@ -51,8 +51,14 @@ module LeanOutput
       UNSUPPORTED.find { |_, pattern| output.match?(pattern) }&.first
     end
 
-    def self.analyze(root: DEFAULT_ROOT, limit: nil)
-      files = Dir.glob(File.join(File.expand_path(root), '*', '*.jsonl'))
+    # `since` in days, because a corpus spanning months mixes projects that no
+    # longer resemble each other — the ranking answers "where were the bytes",
+    # and the useful question is where they are now. `project` narrows to one
+    # transcript directory for the same reason at the other axis: the optimum
+    # floor for a Rails repo and for a video pipeline have no reason to agree,
+    # and averaging them produces a number correct for neither.
+    def self.analyze(root: DEFAULT_ROOT, limit: nil, since: nil, project: nil)
+      files = transcripts(root, since: since, project: project)
       seen = 0
       files.flat_map do |file|
         break [] if limit && seen >= limit
@@ -61,6 +67,22 @@ module LeanOutput
         seen += rows.size
         rows.map { |row| Result.new(**row.transform_keys(&:to_sym)) }
       end
+    end
+
+    def self.transcripts(root, since: nil, project: nil)
+      pattern = File.join(File.expand_path(root), project ? "*#{project}*" : '*', '*.jsonl')
+      files = Dir.glob(pattern)
+      return files unless since
+
+      cutoff = Time.now.utc - (since * 86_400)
+      files.select { |file| File.mtime(file) > cutoff }
+    end
+
+    # Which project each transcript belongs to, for the ranking that asks the
+    # question one repo at a time.
+    def self.projects(root: DEFAULT_ROOT)
+      Dir.glob(File.join(File.expand_path(root), '*')).select { |path| File.directory?(path) }
+         .map { |path| File.basename(path) }.sort
     end
 
     # One transcript at a time, each against its own state directory. The walk

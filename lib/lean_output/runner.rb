@@ -46,7 +46,7 @@ module LeanOutput
       policy = Mode.policy(Mode.resolve(payload['cwd']), payload['cwd'])
       return nil unless policy
 
-      climb(session, tool, payload, output, policy)
+      Session.with_lock(session.id) { climb(session.class.load(payload), tool, payload, output, policy) }
     end
 
     # Bookkeeping outlives the decision: a result that passed through still

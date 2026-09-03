@@ -38,6 +38,26 @@ module LeanOutput
       new(id, read(path(id)))
     end
 
+    # A hook is one process per tool call, and a model that fires four tool
+    # calls in one turn gets four of them at once against the same session
+    # file. `save` is atomic, so nothing corrupts — but read-modify-write is
+    # not, and the loser's ledger entries and gain counters vanish, which reads
+    # as "dedup missed one" and can never be reproduced.
+    #
+    # The lock spans the whole read-modify-write rather than the write, since
+    # the write was never the part that raced. Non-blocking with a fallback to
+    # proceeding unlocked: a hook that cannot take the lock still has a result
+    # to deliver, and the worst case without it is exactly today's behaviour.
+    def self.with_lock(id)
+      FileUtils.mkdir_p(dir)
+      File.open(File.join(dir, "#{id}.lock"), File::RDWR | File::CREAT, 0o644) do |handle|
+        handle.flock(File::LOCK_EX)
+        return yield
+      end
+    rescue StandardError
+      yield
+    end
+
     def self.identify(payload)
       raw = payload['session_id'] || payload['sessionId']
       clean = raw.to_s.gsub(/[^A-Za-z0-9_-]/, '')[0, 64]

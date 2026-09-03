@@ -57,7 +57,47 @@ module LeanOutput
 
     def self.write(cwd, result)
       File.write(path(cwd), JSON.generate(result.to_h))
+      log(cwd, result)
       result
+    end
+
+    # Every calibration, appended, because one measurement cannot tell drift
+    # from noise. The floor moving 16kB → 3kB → 16kB across three months is a
+    # corpus that changed shape; the same floor three times is a number that
+    # has earned being left alone. Neither reading is available from a single
+    # value, and the single value is all this wrote until now.
+    HISTORY = 60
+
+    def self.log(cwd, result)
+      rows = history(cwd) + [result.to_h.transform_keys(&:to_s)]
+      File.write(history_path(cwd), JSON.generate(rows.last(HISTORY)))
+    rescue StandardError
+      nil
+    end
+    private_class_method :log
+
+    def self.history(cwd)
+      rows = JSON.parse(File.read(history_path(cwd)))
+      rows.is_a?(Array) ? rows.select { |row| row.is_a?(Hash) } : []
+    rescue StandardError
+      []
+    end
+
+    def self.trend(cwd)
+      rows = history(cwd)
+      return nil if rows.empty?
+
+      rows.map do |row|
+        format('  %s  floor %-8s %5d spills  %5.1f%% followed  %+.1fM',
+               row['measured_at'], Text.human(row['spill'].to_i),
+               row['spills'].to_i,
+               row['spills'].to_i.zero? ? 0.0 : 100.0 * row['roundtrips'].to_i / row['spills'].to_i,
+               row['net'].to_i / 1_000_000.0)
+      end
+    end
+
+    def self.history_path(cwd)
+      path(cwd).sub(/\.json\z/, '-history.json')
     end
 
     # Same failure posture as `Mode.flag`: unreadable, absent or malformed all

@@ -22,6 +22,7 @@ require_relative 'lean_output/runner'
 require_relative 'lean_output/corpus'
 require_relative 'lean_output/readback'
 require_relative 'lean_output/scan_cache'
+require_relative 'lean_output/usage'
 require_relative 'lean_output/calibration'
 
 module LeanOutput

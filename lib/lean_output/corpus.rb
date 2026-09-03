@@ -57,16 +57,59 @@ module LeanOutput
     # transcript directory for the same reason at the other axis: the optimum
     # floor for a Rails repo and for a video pipeline have no reason to agree,
     # and averaging them produces a number correct for neither.
-    def self.analyze(root: DEFAULT_ROOT, limit: nil, since: nil, project: nil)
+    def self.analyze(root: DEFAULT_ROOT, limit: nil, since: nil, project: nil, level: nil)
       files = transcripts(root, since: since, project: project)
       seen = 0
-      files.flat_map do |file|
-        break [] if limit && seen >= limit
+      at_level(level) do
+        files.flat_map do |file|
+          break [] if limit && seen >= limit
 
-        rows = ScanCache.fetch('corpus', file) { replay_file(file) }
-        seen += rows.size
-        rows.map { |row| Result.new(**row.transform_keys(&:to_sym)) }
+          # The level is part of the key, not just of the run. A memo keyed only
+          # by the file would hand `full` the answer `volatile` computed, which
+          # is the exact comparison the caller asked for and would have got
+          # silently wrong.
+          rows = ScanCache.fetch("corpus-#{level || 'resolved'}", file) { replay_file(file) }
+          seen += rows.size
+          rows.map { |row| Result.new(**row.transform_keys(&:to_sym)) }
+        end
       end
+    end
+
+    # Forces one level for the whole replay. `Mode.resolve` reads the env before
+    # anything else, which is the same door the kill switch uses, so this needs
+    # no special case inside the ladder.
+    def self.at_level(level)
+      return yield unless level
+
+      previous = ENV.fetch('LEAN_OUTPUT_MODE', nil)
+      ENV['LEAN_OUTPUT_MODE'] = level
+      yield
+    ensure
+      ENV['LEAN_OUTPUT_MODE'] = previous if level
+    end
+    private_class_method :at_level
+
+    # What each level would have done to the same corpus, which is the question
+    # behind "which level should I be on" and has only ever been answerable by
+    # switching and waiting a week. Off is not replayed: it is the input.
+    def self.compare(root: DEFAULT_ROOT, since: nil, project: nil)
+      (Mode::LEVELS - %w[off]).filter_map do |level|
+        results = analyze(root: root, since: since, project: project, level: level)
+        next if results.empty?
+
+        total = results.sum(&:bytes)
+        [level, total, results.sum(&:saved), results.count(&:claimed), results.size]
+      end
+    end
+
+    def self.comparison(rows)
+      return 'no tool results found — is the transcript root right?' if rows.empty?
+
+      [format('%-10s %9s %9s %8s %10s', 'level', 'MB in', 'MB out', 'saved', 'rewritten'),
+       *rows.map do |level, total, saved, claimed, count|
+         format('%-10s %9.2f %9.2f %7d%% %6d/%d', level, mb(total), mb(total - saved),
+                total.zero? ? 0 : (100.0 * saved / total).round, claimed, count)
+       end]
     end
 
     def self.transcripts(root, since: nil, project: nil)

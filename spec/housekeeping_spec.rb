@@ -181,6 +181,75 @@ RSpec.describe 'housekeeping' do
     end
   end
 
+  describe "#{LeanOutput::Corpus}.compare" do
+    # The memo is keyed by file, so a comparison across levels would have handed
+    # `full` whatever `volatile` computed — the one question this command exists
+    # to answer, answered wrong and silently.
+    it 'does not serve one level the answer another level computed' do
+      dir = File.join(@dir, 'proj')
+      FileUtils.mkdir_p(dir)
+      long = (1..400).map { |i| "line #{i} of something no compressor will ever claim #{i * 977}" }.join("\n")
+      records = [{ 'sessionId' => 'a', 'cwd' => @dir,
+                   'message' => { 'content' => [{ 'type' => 'tool_use', 'id' => 't1', 'name' => 'Bash',
+                                                  'input' => { 'command' => 'cat big.log' } }] } },
+                 { 'sessionId' => 'a', 'cwd' => @dir,
+                   'toolUseResult' => { 'stdout' => long, 'stderr' => '', 'interrupted' => false,
+                                        'isImage' => false },
+                   'message' => { 'content' => [{ 'type' => 'tool_result', 'tool_use_id' => 't1' }] } }]
+      File.write(File.join(dir, 's.jsonl'), records.map { |r| JSON.generate(r) }.join("\n"))
+
+      rows = LeanOutput::Corpus.compare(root: @dir).to_h { |level, _, saved, _, _| [level, saved] }
+
+      expect(rows['volatile']).to be_positive
+      expect(rows['safe']).to be_zero
+    end
+  end
+
+  describe LeanOutput::Usage do
+    def transcript(records)
+      dir = File.join(@dir, 'proj')
+      FileUtils.mkdir_p(dir)
+      File.write(File.join(dir, 's.jsonl'), records.map { |r| JSON.generate(r) }.join("\n"))
+    end
+
+    def call_and_result(id, command, stdout)
+      [{ 'sessionId' => 'a', 'cwd' => @dir,
+         'message' => { 'content' => [{ 'type' => 'tool_use', 'id' => id, 'name' => 'Bash',
+                                        'input' => { 'command' => command } }] } },
+       { 'sessionId' => 'a', 'cwd' => @dir,
+         'toolUseResult' => { 'stdout' => stdout, 'stderr' => '', 'interrupted' => false, 'isImage' => false },
+         'message' => { 'content' => [{ 'type' => 'tool_result', 'tool_use_id' => id }] } }]
+    end
+
+    def said(text)
+      { 'sessionId' => 'a', 'message' => { 'content' => [{ 'type' => 'text', 'text' => text }] } }
+    end
+
+    let(:body) { (1..40).map { |i| "app/services/widget_#{i}.rb:#{i}: something long enough" }.join("\n") }
+
+    it 'counts a result the model quoted from as referenced' do
+      transcript([*call_and_result('t1', 'grep -rn x app/', body), said('app/services/widget_7.rb'),
+                  said('done'), said('more'), said('and more')])
+
+      expect(described_class.scan(root: @dir).map(&:referenced)).to eq([true])
+    end
+
+    it 'counts a result nothing ever came back to as unreferenced' do
+      transcript([*call_and_result('t1', 'grep -rn x app/', body), said('unrelated prose'),
+                  said('still unrelated'), said('nothing matching'), said('nor here')])
+
+      expect(described_class.scan(root: @dir).map(&:referenced)).to eq([false])
+    end
+
+    # The caveat is the feature: deciding without quoting reads as unreferenced,
+    # so the report has to say so rather than present the number as a verdict.
+    it 'says out loud that referenced is not the same as used' do
+      rows = [described_class::Row.new(command: 'grep', bytes: 9_000, referenced: false)]
+
+      expect(described_class.report(rows)).to include('not a verdict')
+    end
+  end
+
   describe 'the library path' do
     # The scoreboard reads session state written by the hook, so a caller using
     # the gem directly saved bytes that appeared in no total anywhere.

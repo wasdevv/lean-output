@@ -78,6 +78,29 @@ def flags(args)
   options
 end
 
+# What each level would do to the same corpus, so "which level should I be on"
+# stops being a week of switching and waiting.
+def compare(args)
+  options = flags(args)
+  rows = LeanOutput::Corpus.compare(root: options[:root] || LeanOutput::Corpus::DEFAULT_ROOT,
+                                    since: options[:since], project: options[:project])
+  puts scope_line(options) if options[:since] || options[:project]
+  puts LeanOutput::Corpus.comparison(rows)
+  puts "current: #{LeanOutput::Mode.resolve(Dir.pwd)}"
+end
+
+# Rung 1 of the README as a diagnostic. Where the agent is asking for things it
+# then never refers to — a habit to change, not a byte to compress: measured,
+# output nothing refers to again is 4.8% of the token-turns, which is why this
+# prints rather than decides.
+def unused(args)
+  options = flags(args)
+  rows = LeanOutput::Usage.scan(root: options[:root] || LeanOutput::Usage::DEFAULT_ROOT,
+                                since: options[:since], project: options[:project])
+  puts scope_line(options) if options[:since] || options[:project]
+  puts LeanOutput::Usage.report(rows)
+end
+
 # One calibration cannot tell drift from noise. Three months of them can: a
 # floor that keeps landing on the same number has earned being left alone, and
 # one that wanders is a corpus changing shape underneath it.
@@ -242,12 +265,15 @@ when nil then report(cwd)
 when '-v', '--version' then puts LeanOutput::VERSION
 when '-h', '--help'
   puts "usage: lean [#{LeanOutput::Mode::LEVELS.join('|')}|vault|analyze [root]|readback [root]|" \
-       'calibrate [root]|uncalibrate|trend|audit <path>|why <file> [cmd]|fixture <file> <name>|rescan]'
+       'calibrate [root]|uncalibrate|trend|compare|unused|audit <path>|why <file> [cmd]|' \
+       'fixture <file> <name>|rescan]'
 when 'analyze' then analyze(ARGV[1..])
 when 'readback' then readback(ARGV[1])
 when 'calibrate' then calibrate(ARGV[1], cwd)
 when 'audit' then audit(ARGV[1])
 when 'trend' then trend(cwd)
+when 'compare' then compare(ARGV[1..])
+when 'unused' then unused(ARGV[1..])
 when 'why' then why(ARGV[1], ARGV[2])
 when 'fixture' then fixture(ARGV[1], ARGV[2])
 when 'rescan' then puts LeanOutput::ScanCache.clear ? 'lean-output: scan cache cleared' : 'lean-output: nothing to clear'

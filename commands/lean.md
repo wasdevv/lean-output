@@ -1,6 +1,6 @@
 ---
 description: Show or switch the lean-output compression level for this directory
-argument-hint: "[off|safe|full|ultra|volatile|vault|analyze|readback|calibrate|trend|audit|why|fixture|rescan]"
+argument-hint: "[off|safe|full|ultra|volatile|vault|analyze|readback|calibrate|trend|compare|unused|audit|why|fixture|rescan]"
 allowed-tools: Bash(ruby:*)
 ---
 
@@ -25,6 +25,14 @@ too small to answer.
 over every transcript ever written answers where the bytes *were*. `trend`
 prints every calibration this directory has had, so a floor that keeps landing
 on the same number can be told from one that is wandering.
+
+`compare` replays the same corpus at every level and prints them side by side,
+so picking a level stops being a week of switching and waiting. `unused` asks
+the cheapest question on the ladder — did this output need to reach the model at
+all — and answers it from what the model referred to later. It prints rather
+than decides: output nothing refers to again measured 4.8% of the token-turns,
+and deciding without quoting counts as unreferenced, so a high number is a
+question about the agent's habits, not a verdict.
 
 `why <file> [command]` says which gate declined a result — no compressor
 recognised it, it was under the floor, or the rewrite did not save enough —

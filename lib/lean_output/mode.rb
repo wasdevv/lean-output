@@ -181,8 +181,17 @@ module LeanOutput
     # nothing" is a guarantee the code can actually make, not a vibe. It is the
     # level for the afternoon you suspect the compressor ate the line you
     # needed and want the savings that carry no such risk.
-    def self.policy(level)
-      POLICY[normalize(level) || DEFAULT]
+    # The calibrated floor overrides the constant for this working directory
+    # and nothing else does — no file, no override, and the constants below
+    # stand exactly as they did. `spill` is the only key the sweep measures, so
+    # it is the only key that can be replaced.
+    def self.policy(level, cwd = nil)
+      policy = POLICY[normalize(level) || DEFAULT]
+      return policy unless policy&.key?(:spill)
+
+      measured = Calibration.read(cwd) or return policy
+
+      policy.merge(spill: measured['spill'])
     end
 
     def self.normalize(level)

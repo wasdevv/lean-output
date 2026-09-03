@@ -43,7 +43,7 @@ module LeanOutput
       return nil if output.empty?
 
       session = Session.load(payload)
-      policy = Mode.policy(Mode.resolve(payload['cwd']))
+      policy = Mode.policy(Mode.resolve(payload['cwd']), payload['cwd'])
       return nil unless policy
 
       climb(session, tool, payload, output, policy)
@@ -94,7 +94,7 @@ module LeanOutput
     end
     private_class_method :decide
 
-    def self.compressed(session, tool, payload, output, policy)
+    def self.compressed(_session, tool, payload, output, policy)
       compressed = rewrite(tool, payload, output, policy)
       return nil if compressed.nil? || compressed.equal?(output)
 

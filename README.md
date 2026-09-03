@@ -55,6 +55,12 @@ The reference carries the head of what it withheld on purpose. The risk is not t
 
 `/lean` shows the current level and what it has saved; `/lean safe` switches. The level is written per working directory and read fresh on every tool call, so nothing needs restarting.
 
+### The floor is measured, and `/lean calibrate` is how it stays that way
+
+Every threshold below cites a measurement, and until now the path from the measurement back to the constant was a person reading a table and editing this repo. That path was walked three times and got it wrong once — `Readback::POINTER` was the ledger's reference size standing in for the vault's spill, four times cheaper than the thing it priced, on both sides of the arithmetic every floor rests on. It also goes stale in silence: the spill floor was measured on one corpus, and the sentence at the top of this file claiming the pointer was 93% of the win was true at a 500B floor and is 31% at 16kB.
+
+`/lean calibrate` runs the sweep against your own transcripts, takes the floor at the top of the curve, and writes it for this working directory — with the date and the number of spills behind it, printed by `/lean` every time. It calibrates `spill` and nothing else, because `spill` is the only constant the sweep measures. Under 30 spills it refuses and says so rather than fitting noise; `/lean uncalibrate` goes back to the default.
+
 | Level | What it does |
 |---|---|
 | `off` | Every result reaches the model untouched. Same as `LEAN_OUTPUT_DISABLE=1`, but scoped to this directory. |

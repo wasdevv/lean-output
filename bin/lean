@@ -16,6 +16,10 @@ require_relative '../lib/lean_output'
 def report(cwd)
   level = LeanOutput::Mode.resolve(cwd)
   puts "lean-output #{LeanOutput::VERSION} — mode: #{level}#{source(cwd, level)}"
+  # Printed before the savings rather than after, because it is the thing that
+  # decides them, and because a floor nobody can date is a floor nobody audits.
+  receipt = LeanOutput::Calibration.describe(cwd)
+  puts "calibrated: #{receipt}" if receipt
   puts LeanOutput::Scoreboard.render(cwd)
 end
 
@@ -42,6 +46,36 @@ end
 def analyze(root)
   results = LeanOutput::Corpus.analyze(root: root || LeanOutput::Corpus::DEFAULT_ROOT)
   puts LeanOutput::Corpus.report(results)
+end
+
+# The sweep, writing its own answer down instead of printing a table for a
+# human to copy into a constant. That copy has been made three times and was
+# wrong once, and the constant it produced goes stale without anything
+# noticing — which is the whole argument for this command existing.
+def calibrate(root, cwd)
+  measured = LeanOutput::Calibration.measure(root: root || LeanOutput::Readback::DEFAULT_ROOT)
+  return puts refusal(cwd) unless measured
+
+  LeanOutput::Calibration.write(cwd, measured)
+  puts "lean-output: calibrated #{cwd}"
+  puts "  #{LeanOutput::Calibration.describe(cwd)}"
+  puts format('  worth %+.1fM token-turns against this corpus; default was %s',
+              measured.net / 1_000_000.0, LeanOutput::Text.human(LeanOutput::Mode::SPILL_BYTES))
+end
+
+# Nothing written, and the reason said out loud. A corpus too small to answer
+# and a corpus that answers "do not spill here" are different facts, and the
+# second one is worth knowing.
+def refusal(cwd)
+  spills = LeanOutput::Readback.collect(root: LeanOutput::Readback::DEFAULT_ROOT)
+  if spills.size < LeanOutput::Calibration::MIN_SPILLS
+    "lean-output: not calibrating — #{plural(spills.size, 'spill')} in the transcripts, " \
+      "#{LeanOutput::Calibration::MIN_SPILLS} needed. Keeping the default floor of " \
+      "#{LeanOutput::Text.human(LeanOutput::Mode::SPILL_BYTES)}."
+  else
+    "lean-output: not calibrating #{cwd} — no floor pays for itself on this corpus, " \
+      'so every spill here is costing more than it saves. Keeping the default.'
+  end
 end
 
 # What the vault is holding, because a spill writes a file and then nothing
@@ -81,9 +115,14 @@ argument = ARGV.first
 case argument
 when nil then report(cwd)
 when '-v', '--version' then puts LeanOutput::VERSION
-when '-h', '--help' then puts "usage: lean [#{LeanOutput::Mode::LEVELS.join('|')}|vault|analyze [root]|readback [root]]"
+when '-h', '--help'
+  puts "usage: lean [#{LeanOutput::Mode::LEVELS.join('|')}|vault|analyze [root]|readback [root]|" \
+       'calibrate [root]|uncalibrate]'
 when 'analyze' then analyze(ARGV[1])
 when 'readback' then readback(ARGV[1])
+when 'calibrate' then calibrate(ARGV[1], cwd)
+when 'uncalibrate'
+  puts LeanOutput::Calibration.clear(cwd) ? "lean-output: back to the default floor in #{cwd}" : 'lean-output: nothing calibrated here'
 when 'vault' then vault
 else
   level = LeanOutput::Mode.write(cwd, argument)

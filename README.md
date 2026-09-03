@@ -2,7 +2,9 @@
 
 **A Claude Code plugin that keeps long tool output out of your context window — it spills the big results to disk and hands the model a pointer, withholds what the context already holds, and compresses RSpec, RuboCop, Brakeman, `git diff`, cargo and `grep` on the way past. Fewer tokens, zero lost failures.**
 
-The compressors came first and are the smallest part of the win: measured over 94 real transcripts, the pointer accounts for **93%** of the bytes saved and rung 7 for **1.6%**. What follows is in that order — cheapest rung first, compressors last.
+The compressors came first and are not the largest part of the win. Replayed over a corpus of 12008 real tool results, 10.54MB, the split is **43%** compressors, **31%** the vault's pointer and **26%** the ledger's — pointers 57% together. What follows is in ladder order — cheapest rung first, compressors last.
+
+That split used to read 93% pointer against 1.6% compressors, and the number moved because the spill floor did: at 500B the vault took 1307 results in this corpus, at the measured floor of 16kB it takes 18. Both numbers are real; a pointer that gets followed is not a saving, and the floor is where it stopped being one.
 
 Test suites are chatty. A single failing RSpec run ships progress dots, seeds, profiling tables, SimpleCov reports and gem backtraces into your context window — thousands of tokens the model doesn't need. lean-output rewrites those outputs on the fly via a `PostToolUse` hook, keeping **every failure, message and `file:line`** and dropping everything else.
 

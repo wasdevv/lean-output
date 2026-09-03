@@ -101,14 +101,36 @@ module LeanOutput
     # Group by the shape of the command rather than the command, so 588 greps
     # for different strings answer as one line. `git diff` and `git status` stay
     # apart because the subcommand is what decides whether anything can claim it.
+    #
+    # The prefix has to come off first, and it comes in more shapes than one:
+    # `cd X && …` was stripped and `cd X; …` was not, so 1196 calls and 1.00MB
+    # of a real corpus ranked as a bucket called `cd` — a tenth of the whole
+    # thing, hiding `python3`, `git status` and `bundle exec rspec` inside a row
+    # that reads as unclaimable. An inline assignment does the same, and ranks
+    # under `BUNDLE_LOCKFILE`. This only ever moved the ranking: what the hook
+    # claims is decided by `Detector`, which reads the output.
+    PREFIX = [/\A(cd|export|source)\s+\S+\s*(&&|;)\s*/m,   # a directory, then the real command
+              /\A\w+=\S*\s+/m,                             # FOO=bar cmd
+              /\A(env|timeout)\s+(-\S+\s+|\S+=\S*\s+|\d+\s+)*/m].freeze
+
     def self.label(payload)
       return payload['tool_name'].to_s unless payload['tool_name'] == 'Bash'
 
-      command = payload.dig('tool_input', 'command').to_s.strip.sub(/\A(cd|env)\s+\S+\s*&&\s*/, '')
+      command = strip_prefix(payload.dig('tool_input', 'command').to_s.strip)
       words = command.split(/\s+/).reject { |word| word.start_with?('-') }
       head = words.first.to_s.split('/').last
-      %w[bundle bin npm cargo ruby git gh rails].include?(head) ? words.take(2).join(' ') : head
+      %w[bundle bin npm cargo ruby git gh rails python3].include?(head) ? words.take(2).join(' ') : head
     end
+
+    # Repeatedly, because the prefixes stack: `cd X; FOO=1 timeout 60 rspec`.
+    def self.strip_prefix(command)
+      loop do
+        before = command
+        PREFIX.each { |pattern| command = command.sub(pattern, '') }
+        return command if command == before
+      end
+    end
+    private_class_method :strip_prefix
 
     # Walks the transcripts pairing each tool_use with the result that came
     # back. `toolUseResult` is the response in the shape the host actually

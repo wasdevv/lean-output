@@ -65,11 +65,24 @@ RSpec.describe LeanOutput::Readback do
 
   it 'reads the terse notice as well as the explaining one' do
     terse = { 'message' => { 'content' => [{ 'type' => 'tool_result',
-                                             'content' => "[lean-output] withheld 8.0kB, 9 lines, " \
+                                             'content' => '[lean-output] withheld 8.0kB, 9 lines, ' \
                                                           "full text at #{vault}\n" }] } }
     transcript(@dir, 's', [turn(1000), terse, turn(2000)])
 
     expect(described_class.collect(root: @dir).map(&:bytes)).to eq([8192])
+  end
+
+  # The delivered result is what the pointer cost, and the transcript holds it.
+  # A constant standing in for it priced the vault's spill at the ledger's
+  # reference size, on both sides of `net`, under every floor in Mode.
+  it 'prices a spill at what the result it arrived in actually delivered' do
+    transcript(@dir, 's', [turn(1000), spilled(vault, '40.0kB'), turn(2000)])
+
+    spill = described_class.collect(root: @dir).first
+
+    delivered = spilled(vault, '40.0kB').dig('message', 'content', 0, 'content').bytesize
+    expect(spill.pointer).to eq(delivered)
+    expect(spill.pointer).not_to eq(described_class::POINTER)
   end
 
   describe '.net' do

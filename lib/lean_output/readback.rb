@@ -48,7 +48,10 @@ module LeanOutput
     end
 
     def self.collect(root: DEFAULT_ROOT)
-      Dir.glob(File.join(File.expand_path(root), '*', '*.jsonl')).flat_map { |file| from_session(file) }
+      Dir.glob(File.join(File.expand_path(root), '*', '*.jsonl')).flat_map do |file|
+        ScanCache.fetch('readback', file) { from_session(file).map(&:to_h) }
+                 .map { |row| Spill.new(**row.transform_keys(&:to_sym)) }
+      end
     end
 
     # One session at a time, in order, because "how many turns are left" and

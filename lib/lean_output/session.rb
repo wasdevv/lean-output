@@ -58,6 +58,30 @@ module LeanOutput
       File.join(dir, "#{id}.json")
     end
 
+    # How long a finished session's state is worth keeping. `MAX_SEEN` bounds
+    # one file and `Vault` bounds its own directories, so this was the last
+    # thing here that only grew: measured on a real cache, 53 session files
+    # going back four weeks, none of them reachable — a session id never comes
+    # back, so the moment its host process ends the file is dead weight that
+    # nothing will ever read again.
+    #
+    # Two weeks rather than two days because the file is small and the only
+    # thing a wrong guess costs on this side is disk, while deleting a session
+    # that is merely idle costs its whole ledger.
+    KEEP_DAYS = 14
+
+    # Runs off the back of a save, which is the only moment this code is
+    # reliably alive, and never raises: a hook that cannot tidy up still has a
+    # result to deliver.
+    def self.evict
+      cutoff = Time.now.utc - (KEEP_DAYS * 86_400)
+      Dir.glob(File.join(dir, '*.json')).each do |file|
+        File.delete(file) if File.mtime(file) < cutoff
+      end
+    rescue StandardError
+      nil
+    end
+
     def self.read(file)
       parsed = JSON.parse(File.read(file))
       parsed.is_a?(Hash) && parsed['v'] == VERSION ? parsed : blank
@@ -210,6 +234,7 @@ module LeanOutput
       temp = "#{file}.#{Process.pid}.tmp"
       File.write(temp, JSON.generate(data))
       File.rename(temp, file)
+      self.class.evict
       true
     rescue StandardError
       false

@@ -109,6 +109,43 @@ def plural(count, word)
   "#{count} #{word}#{'s' unless count == 1}"
 end
 
+# The receipt for a rewrite, after the fact. The footer names what a compressor
+# dropped, and checking whether it told the truth used to mean reproducing the
+# tool call by hand — three times in one afternoon, which is what a missing
+# command feels like from the inside. The vault already holds the original, so
+# the comparison is a file read away.
+def audit(path)
+  return warn('lean-output: usage: lean audit <path from a pointer>') unless path
+  return warn("lean-output: no such file — #{path}") unless File.file?(path)
+
+  original = File.read(path)
+  command = File.basename(path, '.txt').sub(/\A\d+-/, '').tr('-', ' ')
+  rewritten = LeanOutput.compress(original, command: command)
+  puts "lean-output audit — #{path}"
+  puts format('  command guessed from the name: %s', command)
+  puts format('  original   %9s  %d lines', LeanOutput::Text.human(original.bytesize), original.lines.size)
+  compared(original, rewritten, command)
+end
+
+def compared(original, rewritten, command)
+  if rewritten.equal?(original) || rewritten == original
+    return puts '  no compressor claims this — it went past whole, which is why the vault took it'
+  end
+
+  puts format('  rewritten  %9s  %d lines  (-%d%%)', LeanOutput::Text.human(rewritten.bytesize),
+              rewritten.lines.size, 100 - (100.0 * rewritten.bytesize / original.bytesize).round)
+  dropped = LeanOutput.discards(original, command: command)
+  puts "  dropped: #{dropped.empty? ? 'nothing named' : dropped.join(', ')}"
+  puts format('  locations kept: %d of %d', locations(rewritten).size, locations(original).size)
+end
+
+# The invariant the bench enforces, checkable on one file: every `file:line` in
+# the input has to survive into the output. It is what separates compression
+# from truncation, and it is the thing a footer cannot prove about itself.
+def locations(text)
+  text.scan(%r{[\w./-]+\.\w+:\d+}).uniq
+end
+
 cwd = Dir.pwd
 argument = ARGV.first
 
@@ -117,10 +154,12 @@ when nil then report(cwd)
 when '-v', '--version' then puts LeanOutput::VERSION
 when '-h', '--help'
   puts "usage: lean [#{LeanOutput::Mode::LEVELS.join('|')}|vault|analyze [root]|readback [root]|" \
-       'calibrate [root]|uncalibrate]'
+       'calibrate [root]|uncalibrate|audit <path>|rescan]'
 when 'analyze' then analyze(ARGV[1])
 when 'readback' then readback(ARGV[1])
 when 'calibrate' then calibrate(ARGV[1], cwd)
+when 'audit' then audit(ARGV[1])
+when 'rescan' then puts LeanOutput::ScanCache.clear ? 'lean-output: scan cache cleared' : 'lean-output: nothing to clear'
 when 'uncalibrate'
   puts LeanOutput::Calibration.clear(cwd) ? "lean-output: back to the default floor in #{cwd}" : 'lean-output: nothing calibrated here'
 when 'vault' then vault

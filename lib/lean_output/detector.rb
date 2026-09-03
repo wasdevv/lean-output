@@ -17,7 +17,17 @@ module LeanOutput
     # buffer is a hit list rather than a compiler's diagnostics.
     OUTPUT_DETECTABLE = [Compressors::Rspec, Compressors::Rubocop, Compressors::Brakeman,
                          Compressors::GitDiff].freeze
-    JSON_FORMAT = /(-f|--format)[= ]?j/
+    # Structured output is not ours to rewrite: a compressor that drops a line
+    # from JSON hands the next parser a syntax error, not a shorter document.
+    #
+    # The flag has to be a flag, and the value has to be the format. Anchored
+    # to a word boundary and matched against the whole word, this used to be a
+    # bare `/(-f|--format)[= ]?j/` scanning anywhere in the command, so any
+    # filename starting with `j` disabled every compressor: `grep -f
+    # jargon.txt` bailed, `cargo test --format junit` bailed on output that is
+    # XML, and `bundle exec rspec | jq -f json` went from one claimant to none
+    # with the rspec failures still in the buffer, unclaimed.
+    JSON_FORMAT = /(?:\A|\s)(?:-f|--format)[= ](?:json|j)(?:\s|\z)/
 
     def self.for(command, output)
       return [] if command.match?(JSON_FORMAT)

@@ -1,6 +1,6 @@
 ---
 description: Show or switch the lean-output compression level for this directory
-argument-hint: "[off|safe|full|ultra|volatile|vault|analyze|readback|calibrate]"
+argument-hint: "[off|safe|full|ultra|volatile|vault|analyze|readback|calibrate|audit|rescan]"
 allowed-tools: Bash(ruby:*)
 ---
 
@@ -20,3 +20,8 @@ against how often the model followed a pointer. All three only print.
 and stores it for this directory, with the date and the sample size behind it.
 `uncalibrate` goes back to the default. It refuses, and says so, on a corpus
 too small to answer.
+
+`audit <path>` takes a path from a pointer and replays the ladder against the
+stored original — what a compressor would drop, and whether every `file:line`
+survived. `rescan` throws away the memo the scans keep per transcript, which is
+the first thing to try when a number looks wrong.

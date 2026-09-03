@@ -76,7 +76,7 @@ RSpec.describe 'the volatile level' do
       pointer = bash('cat big.log', long)
 
       expect(pointer).to include('middle withheld')
-      expect(pointer).to match(/full text at \S+ \(Read or grep it\)/)
+      expect(pointer).to match(%r{full text at \S+ \(grep it, or Read with offset/limit})
     end
 
     # The preview's tail is aligned to a line break, which is worth bytes on a
@@ -122,7 +122,7 @@ RSpec.describe 'the volatile level' do
         first = spill('a.log', long)
         second = spill('b.log', "#{long}b")
 
-        expect(first).to include('middle withheld').and include('(Read or grep it)')
+        expect(first).to include('middle withheld').and include('grep it, or Read with offset/limit')
         expect(second).to include('withheld')
         expect(second).not_to include('(Read or grep it)')
         expect(second.bytesize).to be < first.bytesize
@@ -152,7 +152,7 @@ RSpec.describe 'the volatile level' do
         spill('a.log', long)
         ENV['LEAN_OUTPUT_WINDOW'] = '1'
 
-        expect(spill('c.log', "#{long}c")).to include('(Read or grep it)')
+        expect(spill('c.log', "#{long}c")).to include('grep it, or Read with offset/limit')
       ensure
         ENV.delete('LEAN_OUTPUT_WINDOW')
       end
@@ -190,10 +190,25 @@ RSpec.describe 'the volatile level' do
     # KEEP bounds the files inside one session and used to be the whole story,
     # which left the number of sessions unbounded — the shape of leak that
     # reads as working for months and then as a full disk.
-    it 'keeps the number of session directories bounded' do
+    #
+    # The count alone was a bound on disk that was not a bound on correctness:
+    # ordered by mtime, the 21st busiest session was deleted while it was still
+    # running, taking every pointer it had handed out with it. So the count is
+    # now a floor on eviction and going quiet is the trigger.
+    it 'never evicts a session that is still running' do
       (LeanOutput::Vault::SESSIONS + 5).times { bash('cat big.log', long) }
 
-      expect(LeanOutput::Vault.sessions.size).to eq(LeanOutput::Vault::SESSIONS)
+      expect(LeanOutput::Vault.sessions.size).to eq(LeanOutput::Vault::SESSIONS + 5)
+    end
+
+    it 'evicts the sessions past the keep count once they have gone quiet' do
+      (LeanOutput::Vault::SESSIONS + 5).times { bash('cat big.log', long) }
+      old = Time.now.utc - ((LeanOutput::Vault::QUIET_HOURS + 1) * 3600)
+      LeanOutput::Vault.sessions.each { |dir| File.utime(old, old, dir) }
+
+      bash('cat big.log', long)
+
+      expect(LeanOutput::Vault.sessions.size).to be <= LeanOutput::Vault::SESSIONS + 1
     end
 
     # The pointer names one result; this is how the other 399 stay findable.

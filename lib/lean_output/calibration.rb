@@ -80,10 +80,29 @@ module LeanOutput
     def self.describe(cwd)
       measured = read(cwd) or return nil
 
-      format('spill floor %s — measured %s over %d spills, %d read back',
+      format('spill floor %s — measured %s over %d spills, %d read back%s',
              Text.human(measured['spill']), measured['measured_at'],
-             measured['spills'].to_i, measured['roundtrips'].to_i)
+             measured['spills'].to_i, measured['roundtrips'].to_i, staleness(measured))
     end
+
+    # A calibrated floor that nothing ever questions is the same failure the
+    # command was written to fix, one level down: the number was right when it
+    # was taken and nothing notices when it stops being. So the receipt carries
+    # its own age, and past the window it stops being a receipt and starts
+    # being a prompt.
+    STALE_DAYS = 30
+
+    # Built from the parts rather than parsed, because the date this writes is
+    # always `%Y-%m-%d` and a parser here would be a second thing that can be
+    # wrong about a format this file already owns both ends of.
+    def self.staleness(measured)
+      parts = measured['measured_at'].to_s.split('-').map(&:to_i)
+      return '' unless parts.size == 3 && parts.all?(&:positive?)
+
+      days = ((Time.now.utc - Time.utc(*parts)) / 86_400).to_i
+      days < STALE_DAYS ? '' : " — #{days} days ago, run `lean calibrate` again"
+    end
+    private_class_method :staleness
 
     def self.clear(cwd)
       File.delete(path(cwd))

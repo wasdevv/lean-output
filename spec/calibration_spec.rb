@@ -75,10 +75,23 @@ RSpec.describe LeanOutput::Calibration do
     end
 
     it 'carries the date and the sample size, so the number can be audited later' do
+      today = Time.now.utc.strftime('%Y-%m-%d')
       described_class.write(@cwd, described_class::Result.new(spill: 3_000, net: 1, spills: 40,
-                                                              roundtrips: 2, measured_at: '2026-09-03'))
+                                                              roundtrips: 2, measured_at: today))
 
-      expect(described_class.describe(@cwd)).to include('2026-09-03', '40 spills', '2 read back')
+      expect(described_class.describe(@cwd)).to include(today, '40 spills', '2 read back')
+      expect(described_class.describe(@cwd)).not_to include('calibrate` again')
+    end
+
+    # The failure this command exists to fix, one level down: the floor was
+    # right when it was taken and nothing notices when it stops being. Asserted
+    # because the age arithmetic is the kind that fails to nil quietly.
+    it 'asks to be re-run once the measurement is older than the window' do
+      old = Time.now.utc - ((described_class::STALE_DAYS + 5) * 86_400)
+      described_class.write(@cwd, described_class::Result.new(spill: 3_000, net: 1, spills: 40, roundtrips: 2,
+                                                              measured_at: old.strftime('%Y-%m-%d')))
+
+      expect(described_class.describe(@cwd)).to include('35 days ago', 'run `lean calibrate` again')
     end
   end
 end

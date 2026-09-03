@@ -21,15 +21,70 @@ module LeanOutput
   module Corpus
     DEFAULT_ROOT = '~/.claude/projects'
 
-    Result = Struct.new(:tool, :command, :bytes, :saved, :claimed, keyword_init: true)
+    Result = Struct.new(:tool, :command, :bytes, :saved, :claimed, :shape, keyword_init: true)
+
+    # Tools this plugin has no compressor for, recognised by what they print.
+    #
+    # The roster is rspec, rubocop, brakeman, cargo, git diff and grep — one
+    # ecosystem, chosen because it is the one whose output was on hand. On this
+    # corpus compressors are 43% of everything saved, so for anyone working in
+    # Python, JavaScript or Go that share is simply missing, and nothing in the
+    # tool said so: `analyze` ranked their unclaimed output under `pytest` or
+    # `npm` with no hint that a compressor was the thing it was missing.
+    #
+    # These patterns only ever write a line in a report. That is deliberate and
+    # it is the whole reason they are allowed to be this rough: a false
+    # positive here costs a suggestion, while the same guess inside `Detector`
+    # would cost a rewrite of output nobody verified. Writing the compressor
+    # still needs real captured output — the fixture for a foreign tool comes
+    # from the tool, never from what we assume it prints.
+    UNSUPPORTED = {
+      'pytest' => /^=+ (FAILURES|ERRORS|short test summary) =+|^\d+ (passed|failed)/,
+      'jest/vitest' => /^\s*(✕|✗|×)\s|^Tests:\s+\d+ failed|^ FAIL /,
+      'go test' => /^--- FAIL: |^ok\s+\S+\s+[\d.]+s$/,
+      'eslint' => /^✖ \d+ problems?|^\s+\d+:\d+\s+(error|warning)\s/,
+      'tsc' => /error TS\d+:/,
+      'pip/npm install' => /^(Collecting|Downloading|Requirement already satisfied|added \d+ packages)/
+    }.freeze
+
+    def self.shape_of(output)
+      UNSUPPORTED.find { |_, pattern| output.match?(pattern) }&.first
+    end
 
     def self.analyze(root: DEFAULT_ROOT, limit: nil)
-      results = []
-      Dir.mktmpdir('lean-output-corpus') do |state|
-        with_state(state) { each_result(root, limit) { |payload| results << replay(payload) } }
+      files = Dir.glob(File.join(File.expand_path(root), '*', '*.jsonl'))
+      seen = 0
+      files.flat_map do |file|
+        break [] if limit && seen >= limit
+
+        rows = ScanCache.fetch('corpus', file) { replay_file(file) }
+        seen += rows.size
+        rows.map { |row| Result.new(**row.transform_keys(&:to_sym)) }
       end
-      results.compact
     end
+
+    # One transcript at a time, each against its own state directory. The walk
+    # used to share one temp state across every file, which was the shape of
+    # the real thing but not its meaning: a transcript is a session, and two
+    # sessions never see each other's ledger. Replaying them separately is both
+    # more faithful and what lets a file's answer be memoised — a transcript
+    # whose size and mtime have not moved cannot have a different answer, and
+    # this replay is the ten minutes that made `calibrate` expensive enough to
+    # run once and then trust for a year.
+    def self.replay_file(file)
+      rows = []
+      Dir.mktmpdir('lean-output-corpus') do |state|
+        with_state(state) do
+          calls = {}
+          File.foreach(file) do |line|
+            record = parse(line) or next
+            harvest(record, calls) { |payload| rows << replay(payload)&.to_h }
+          end
+        end
+      end
+      rows.compact
+    end
+    private_class_method :replay_file
 
     # Ranked by what is left on the table, not by what was saved. A compressor
     # that already works is not where the next one should go; the top of this
@@ -43,8 +98,24 @@ module LeanOutput
       [format('%-20s %7s %9s %9s %8s', 'command', 'calls', 'MB', 'saved', 'unclaimed'),
        *ranked.map { |name, group| row(name, group) },
        '',
-       summary(groups.values.sum { |group| group[:bytes] }, results)].join("\n")
+       summary(groups.values.sum { |group| group[:bytes] }, results),
+       *missing(results)].join("\n")
     end
+
+    # Not a ranking, a shopping list: the tools whose output went past whole
+    # because nothing here knows how to read it. Silent when the roster already
+    # covers what you run, which is the common case and the reason it costs a
+    # line rather than a section.
+    def self.missing(results)
+      shapes = results.reject(&:claimed).group_by(&:shape).except(nil)
+      return [] if shapes.empty?
+
+      ['', 'unclaimed output from tools with no compressor here:',
+       *shapes.sort_by { |_, list| -list.sum(&:bytes) }.map do |shape, list|
+         format('  %-18s %5d results  %6.2fMB', shape, list.size, mb(list.sum(&:bytes)))
+       end]
+    end
+    private_class_method :missing
 
     def self.tally(list)
       { calls: list.size, bytes: list.sum(&:bytes), saved: list.sum(&:saved),
@@ -93,7 +164,8 @@ module LeanOutput
       after = updated ? Runner.extract_output(updated).to_s.bytesize : output.bytesize
       Result.new(
         tool: payload['tool_name'], command: label(payload), bytes: output.bytesize,
-        saved: output.bytesize - after, claimed: !updated.nil?
+        saved: output.bytesize - after, claimed: !updated.nil?,
+        shape: updated ? nil : shape_of(output)
       )
     end
     private_class_method :replay

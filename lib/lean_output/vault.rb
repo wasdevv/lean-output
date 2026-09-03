@@ -77,7 +77,20 @@ module LeanOutput
     # It has to state that something was withheld, how much, and where it is —
     # a model not told it holds a fragment answers as if it read the whole
     # thing — and nothing beyond that survives being said 2804 times.
-    NOTICE = "\n[lean-output] middle withheld — %<size>s, %<lines>d lines, full text at %<path>s (Read or grep it)\n"
+    # "Read or grep it" was true and it was not advice. Measured over the
+    # transcripts: of 1060 read-backs, **1054 read the whole file and 6 used
+    # offset or limit**. A whole-file read hands the entire result back to the
+    # context and spends a turn doing it — the two costs this rung exists to
+    # avoid — so the pointer was being followed in the one way that makes it
+    # worthless.
+    #
+    # The model was not being careless. It had a path, a size and a line count,
+    # and no reason to think a slice would do; the notice named the tool and
+    # not the shape of the call. Naming the range costs bytes on every spill
+    # and is the cheapest thing here that touches the read-back rate, which the
+    # sweep prices as worth more than every compressor combined.
+    NOTICE = "\n[lean-output] middle withheld — %<size>s, %<lines>d lines, full text at %<path>s " \
+             "(grep it, or Read with offset/limit — a whole-file Read spends what the pointer saved)\n"
     # Said once per window, after the sentence above has established what a
     # lean-output path is and what to do with it. Same three facts — something
     # was withheld, how much, and exactly where — with the explaining of them
@@ -89,7 +102,7 @@ module LeanOutput
     # invented its own would save fifteen more bytes and make every consumer —
     # the model skimming, a grep, this repo's own specs — carry two patterns for
     # one fact. One shape everywhere is worth more than the fifteen bytes.
-    TERSE = "\n[lean-output] withheld %<size>s, %<lines>d lines, full text at %<path>s\n"
+    TERSE = "\n[lean-output] withheld %<size>s, %<lines>d lines, full text at %<path>s (grep or Read a range)\n"
 
     # [pointer text, path], because a caller that hands out a pointer has to be
     # able to say so later — the ledger cannot claim the model holds bytes it
@@ -145,11 +158,36 @@ module LeanOutput
       path = File.join(dir, format('%04d-%s.txt', session.seq, slug(label)))
       File.write(path, output)
       prune(dir)
-      FileUtils.rm_rf(sessions.drop(SESSIONS))
+      FileUtils.rm_rf(evictable)
       path
     rescue StandardError
       nil
     end
+
+    # A session directory past the keep count is only evictable if it has also
+    # gone quiet. Counting alone was a bound on disk that was not a bound on
+    # correctness: `sessions` is ordered by mtime, so the 21st busiest session
+    # is deleted while it is still running, and every pointer it has handed out
+    # becomes a path to nothing — silently, since a pointer is only checked
+    # when the model follows it.
+    #
+    # Twenty concurrent sessions is not a hypothetical here. Swarm runs up to
+    # four agents per task plus the host, each its own session, each writing
+    # into this directory.
+    #
+    # The window is the ledger's, in time rather than bytes, because that is
+    # the promise being kept: a reference may point at anything still inside
+    # it, so nothing inside it may be deleted.
+    QUIET_HOURS = 6
+
+    def self.evictable
+      stale = sessions.drop(SESSIONS)
+      cutoff = Time.now.utc - (QUIET_HOURS * 3600)
+      stale.reject { |path| File.mtime(path) > cutoff }
+    rescue StandardError
+      []
+    end
+    private_class_method :evictable
 
     # The name is for a human reading `ls`, and for the model recognising its
     # own pointer; the sequence number in front is what makes it unique.

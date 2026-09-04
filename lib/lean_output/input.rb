@@ -75,6 +75,85 @@ module LeanOutput
        'What moves this number is what the agent is asked to do, not how output is written.'].join("\n")
     end
 
+    # The one pattern on this side with a fix, and the only reason this file is
+    # more than a lament.
+    #
+    # A heredoc pastes a whole script into the turn. Pasted once that is the
+    # work; pasted with small variations it is the same script charged again
+    # every time, and measured over a real corpus that is where the input mass
+    # sits: heredocs are 67% of all Bash input, and of the ones over 1kB,
+    # **60% is the second and later paste of a script already in the window** —
+    # 2.14MB, 16% of every byte the model spends asking for anything. One
+    # family in that corpus is a 2kB Python script pasted 128 times.
+    #
+    # The fix is not a rung. Nothing here can un-send a paste, and a PreToolUse
+    # hook cannot either — the bytes are in the turn before it runs, and the
+    # only decision channel that survives `bypassPermissions` is `deny`, which
+    # is not a thing to spend on byte economy. What removes this is a
+    # convention — write the script to a file once, run it by path — and what
+    # this does is put a number on it before and a number on it after.
+    MIN_SCRIPT = 1_000
+    HEREDOC = /<<-?['"]?\w+/
+    # A path plus arguments, which is what the second run costs instead.
+    PATH_COST = 60
+
+    Family = Struct.new(:head, :calls, :bytes, :avoidable, keyword_init: true)
+
+    def self.scripts(root: DEFAULT_ROOT, since: nil, project: nil)
+      groups = Hash.new { |hash, key| hash[key] = [] }
+      Corpus.transcripts(root, since: since, project: project).each do |file|
+        ScanCache.fetch('scripts', file) { pastes(file) }.each do |row|
+          groups[[file, row['head']]] << row['bytes']
+        end
+      end
+      families(groups)
+    end
+
+    def self.pastes(file)
+      rows = []
+      calls = {}
+      File.foreach(file) do |line|
+        record = Corpus.send(:parse, line) or next
+        Corpus.send(:harvest, record, calls) do |payload|
+          command = payload.dig('tool_input', 'command').to_s
+          next unless command.bytesize > MIN_SCRIPT && command.match?(HEREDOC)
+
+          rows << { 'head' => command.gsub(/\s+/, ' ')[0, 60], 'bytes' => command.bytesize }
+        end
+      end
+      rows
+    rescue StandardError
+      []
+    end
+    private_class_method :pastes
+
+    # Only a family — the same script shape more than once in one session — has
+    # anything to save. A script pasted once is the work being done.
+    def self.families(groups)
+      groups.filter_map do |(_, head), sizes|
+        next if sizes.size < 2
+
+        Family.new(head: head, calls: sizes.size, bytes: sizes.sum,
+                   avoidable: sizes.drop(1).sum - ((sizes.size - 1) * PATH_COST))
+      end.sort_by { |family| -family.avoidable }
+    end
+    private_class_method :families
+
+    def self.scripts_report(families, limit: 6)
+      return 'no repeated heredocs — nothing here to change' if families.empty?
+
+      total = families.sum(&:avoidable)
+      [format('%d families of a script pasted more than once in one session', families.size),
+       format('%.2fMB would not have been sent if each were written to a file once and run by path',
+              mb(total)),
+       '',
+       format('%6s %10s %10s  %s', 'pastes', 'MB', 'avoidable', 'starts with'),
+       *families.first(limit).map do |family|
+         format('%6d %9.2f %10.2f  %s', family.calls, mb(family.bytes), mb(family.avoidable),
+                family.head[0, 58])
+       end].join("\n")
+    end
+
     def self.mb(bytes) = bytes / 1024.0 / 1024
     private_class_method :mb
   end

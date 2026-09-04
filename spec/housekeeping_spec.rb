@@ -312,4 +312,56 @@ RSpec.describe 'housekeeping' do
       expect(Dir.glob(File.join(@dir, 'lib-*.json'))).to be_empty
     end
   end
+
+  describe LeanOutput::Input do
+    def transcript(commands)
+      dir = File.join(@dir, 'proj')
+      FileUtils.mkdir_p(dir)
+      records = commands.each_with_index.flat_map do |command, i|
+        [{ 'sessionId' => 'a', 'cwd' => @dir,
+           'message' => { 'content' => [{ 'type' => 'tool_use', 'id' => "t#{i}", 'name' => 'Bash',
+                                          'input' => { 'command' => command } }] } },
+         { 'sessionId' => 'a', 'cwd' => @dir,
+           'toolUseResult' => { 'stdout' => 'ok', 'stderr' => '', 'interrupted' => false, 'isImage' => false },
+           'message' => { 'content' => [{ 'type' => 'tool_result', 'tool_use_id' => "t#{i}" }] } }]
+      end
+      File.write(File.join(dir, 's.jsonl'), records.map { |r| JSON.generate(r) }.join("\n"))
+    end
+
+    def script(tail)
+      "cd /repo && python3 - <<'PY'\n#{'x = 1\n' * 200}print(#{tail})\nPY"
+    end
+
+    # The asking side is 55% of what tool calls cost and no rung reaches it.
+    it 'counts what the model spent asking, not only what came back' do
+      transcript([script(1)])
+
+      row = described_class.scan(root: @dir).find { |r| r.tool == 'Bash' }
+
+      expect(row.input).to be > 1_000
+      expect(row.output).to eq(2)
+    end
+
+    # A script pasted once is the work. The second paste is the same script
+    # charged again, and that is the only pattern on this side with a fix.
+    it 'names a script pasted more than once and prices the repeats' do
+      transcript([script(1), script(2), script(3)])
+
+      family = described_class.scripts(root: @dir).first
+
+      expect(family.calls).to eq(3)
+      expect(family.avoidable).to be_within(200).of(family.bytes / 3 * 2)
+    end
+
+    it 'says nothing about a script pasted once' do
+      transcript([script(1)])
+
+      expect(described_class.scripts(root: @dir)).to be_empty
+    end
+
+    it 'reports rather than promising a rewrite' do
+      expect(described_class.report([described_class::Row.new(tool: 'Bash', calls: 1, input: 10, output: 5)]))
+        .to include('Nothing here can be rewritten')
+    end
+  end
 end

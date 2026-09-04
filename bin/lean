@@ -111,6 +111,11 @@ def input(args)
                                 since: options[:since], project: options[:project])
   puts scope_line(options) if options[:since] || options[:project]
   puts LeanOutput::Input.report(rows)
+  puts
+  puts LeanOutput::Input.scripts_report(
+    LeanOutput::Input.scripts(root: options[:root] || LeanOutput::Input::DEFAULT_ROOT,
+                              since: options[:since], project: options[:project])
+  )
 end
 
 # One calibration cannot tell drift from noise. Three months of them can: a

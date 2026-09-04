@@ -39,6 +39,8 @@ module LeanOutput
     # from the tool, never from what we assume it prints.
     UNSUPPORTED = {
       'pytest' => /^=+ (FAILURES|ERRORS|short test summary) =+|^\d+ (passed|failed)/,
+      # `node --test` and `python -m unittest` have compressors now, so what is
+      # left under these names is the runner this plugin still cannot read.
       'jest/vitest' => /^\s*(✕|✗|×)\s|^Tests:\s+\d+ failed|^ FAIL /,
       'go test' => /^--- FAIL: |^ok\s+\S+\s+[\d.]+s$/,
       'eslint' => /^✖ \d+ problems?|^\s+\d+:\d+\s+(error|warning)\s/,

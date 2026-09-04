@@ -1,0 +1,8 @@
+test_one (test_green.GreenTest) ... ok
+test_three (test_green.GreenTest) ... ok
+test_two (test_green.GreenTest) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.000s
+
+OK

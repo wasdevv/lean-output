@@ -129,7 +129,8 @@ module LeanOutput
 
     def self.gain_blank
       { 'calls' => 0, 'before' => 0, 'after' => 0, 'hits' => 0, 'hit_bytes' => 0,
-        'rewrites' => 0, 'reruns' => 0, 'reruns_base' => 0 }
+        'rewrites' => 0, 'reruns' => 0, 'reruns_base' => 0,
+        'watch_rewritten' => 0, 'watch_plain' => 0 }
     end
 
     def initialize(id, data)
@@ -230,7 +231,9 @@ module LeanOutput
     # Both arms are counted, and that is the entire design. Re-running a command
     # within three calls is background behaviour — over 8680 real results it
     # happens after 15.0% of the results this plugin would rewrite and after
-    # 14.9% of the ones it leaves alone. A detector watching only the first
+    # 14.9% of the ones it leaves alone. Those two numbers are from the meter
+    # as it was; see `observe` for why they were not comparable, and 1.5%/0.3%
+    # for what exact-command matching says instead. A detector watching only the first
     # number would have found 89 "misses" in a corpus where the plugin was
     # provably inert and could not have caused one.
     #
@@ -246,14 +249,37 @@ module LeanOutput
     # say the same thing, which is the answer this detector was built to get.
     WATCH_CALLS = 3
 
+    # The re-run meter, and the two things that made its number unreadable.
+    #
+    # **It compared two different populations.** The rewritten rate was
+    # `reruns / rewrites`; the control was `reruns_base / (calls - rewrites)`,
+    # and `calls` counts every result the hook ever saw — every Read, every
+    # 200-byte `echo`, everything that has no notion of being re-run. That
+    # denominator is enormous and mostly inert, so the control was pushed
+    # towards zero while the rewritten side was measured over its own kind.
+    # The README leaned on the pair to argue the ceiling was not sending anyone
+    # back, and a comparison between two populations cannot carry that.
+    #
+    # **And the identity was a prefix.** `Ledger.label` shortens a Bash command
+    # to 80 characters, so `cd /long/path && env -u A -u B ruby one.rb` and the
+    # same line ending in `two.rb` were the same command to this counter. A
+    # session that runs a family of long commands scores itself as re-running
+    # constantly. Measured against exact-command matching over the same
+    # transcripts, the meter read 40.5% against 18.6% where the truth was 1.5%
+    # against 0.3% — the direction survived, nothing else did.
+    #
+    # Both sides are now counted over the same thing: results that entered the
+    # watch list at all, identified by a digest of the whole command.
     def observe(label, rewritten:)
       watch = data['watch'] ||= []
-      earlier = watch.find { |entry| entry[1] == label && seq - entry[0].to_i <= WATCH_CALLS }
+      key = Digest::SHA256.hexdigest(label.to_s)[0, 12]
+      earlier = watch.find { |entry| entry[1] == key && seq - entry[0].to_i <= WATCH_CALLS }
 
       bump(earlier[2] ? 'reruns' : 'reruns_base') if earlier
+      bump(rewritten ? 'watch_rewritten' : 'watch_plain')
       bump('rewrites') if rewritten
 
-      data['watch'] = (watch << [seq, label, rewritten]).last(WATCH_CALLS)
+      data['watch'] = (watch << [seq, key, rewritten]).last(WATCH_CALLS)
     end
 
     def bump(counter)

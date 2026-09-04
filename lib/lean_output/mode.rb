@@ -54,10 +54,17 @@ module LeanOutput
     # fraction of it. A ceiling works the tail, where the bytes actually are.
     #
     # 4000B clipped 6% of calls for -18.3% of the corpus, and left 2000B as the
-    # next step conditional on the re-run meter staying flat. It stayed flat:
-    # over 660 real results, 10.7% of rewrites were followed by a re-run within
-    # three calls against 11.1% of passthroughs — the control is the higher of
-    # the two, so the ceiling was not sending anyone back for what it cut.
+    # next step conditional on the re-run meter staying flat. It read flat —
+    # 10.7% of rewrites against 11.1% of passthroughs over 660 results — but
+    # **that reading came from a meter that was comparing two populations**:
+    # the control was every call the hook had ever seen, Reads and 200-byte
+    # echoes included, against a rewritten side measured over its own kind.
+    # The meter is fixed (see `Session#observe`); the sentence is left here
+    # because the decision below was taken while trusting it, and a threshold
+    # whose evidence has been withdrawn should say so rather than read as
+    # settled. Re-measured with exact commands over the same transcripts: 1.5%
+    # against 0.3%, both small enough that the ceiling is still not the thing
+    # sending anyone back.
     #
     # So the knob was turned, to 2000B, on the same one-sided accounting that
     # put the spill floor at 500B — and it is the same mistake, in the rung

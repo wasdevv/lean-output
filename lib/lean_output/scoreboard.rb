@@ -29,18 +29,21 @@ module LeanOutput
     # by the same command again" reads like a harm figure; beside the same
     # number for the results left untouched it reads like what it is. They sat
     # at 15.0% and 14.9% over the corpus that motivated this, which is the
-    # measurement saying the first number means nothing yet.
+    # measurement saying the first number means nothing yet. Both of those came
+    # from the meter before it compared like with like; re-measured against
+    # exact commands, 1.5% and 0.3%. The pairing is the part that survived.
+    # Both rates over the population that can actually be re-run: results the
+    # hook watched. The control used to be every other call the hook ever saw,
+    # Reads included, which is not the same kind of thing at all.
     def self.reruns(gain)
-      rewrites = gain['rewrites'].to_i
-      others = gain['calls'].to_i - rewrites
-      "#{percent_of(gain['reruns'], rewrites)} after a rewrite, " \
-        "#{percent_of(gain['reruns_base'], others)} after a passthrough " \
+      "#{percent_of(gain['reruns'], gain['watch_rewritten'])} after a rewrite, " \
+        "#{percent_of(gain['reruns_base'], gain['watch_plain'])} after a passthrough " \
         "(within #{Session::WATCH_CALLS} calls)"
     end
     private_class_method :reruns
 
     def self.rerun_sample?(gain)
-      gain['rewrites'].to_i.positive? && (gain['calls'].to_i - gain['rewrites'].to_i).positive?
+      gain['watch_rewritten'].to_i.positive? && gain['watch_plain'].to_i.positive?
     end
     private_class_method :rerun_sample?
 

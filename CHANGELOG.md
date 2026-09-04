@@ -6,6 +6,65 @@ one. Measurements are from replaying real transcripts; where a number moved,
 both numbers are given, because a threshold with one number behind it is how
 this project got its longest-lived bug.
 
+## 1.8.1
+
+### `/lean input` — the half of the bill no rung reaches
+
+Every number in this project measures tool *output*. The *input* — the command
+in a Bash call, the file body in a `Write`, both strings in an `Edit` — is
+written by the model into its own turn and paid under the same arithmetic, once
+per turn that remains. Measured over a real corpus: **13.16MB of input against
+10.64MB of output. The asking side is 55% of what tool calls cost**, and `Write`
+alone is 3.47MB against effectively zero output.
+
+None of it is reachable from a `PostToolUse` hook, and that is not a gap to
+close later: the tokens are spent when the model emits the block. So this
+command reports and never rewrites.
+
+It earns its place on the second half. Of Bash input, **67% is heredocs**, and
+of the heredocs over 1kB, **60% is the second and later paste of a script
+already in the window** — 2.14MB, 16% of every byte spent asking, across 133
+families. The largest is a 2kB Python script pasted **128 times** in one
+session. `/lean input` names them, with what each would not have cost had the
+script been written to a file once and run by path.
+
+That fix is a convention, not a rung — and this is how you check whether it
+worked.
+
+### `lean rescan` reported failure and did nothing
+
+A formatter removed the lazy `require 'fileutils'` inside `ScanCache.clear`.
+`FileUtils` was then undefined, the `NameError` fell into the rescue, and the
+command returned `false` forever. Rewritten without the dependency, with a test
+that asserts the happy path actually happened.
+
+
+
+### The re-run meter was comparing two different populations
+
+`/lean` prints two rates side by side — how often a rewritten result was
+followed by the same command again, against the same figure for results it left
+alone — and they exist as a pair because neither means anything alone. The pair
+was not comparable:
+
+- the rewritten rate was `reruns / rewrites`;
+- the control was `reruns_base / (calls - rewrites)`, and `calls` counts every
+  result the hook ever saw — every `Read`, every 200-byte `echo`, everything
+  with no notion of being re-run.
+
+And a command was identified by `Ledger.label`, which shortens it to 80
+characters, so a family of long commands differing only at the end was one
+command to the counter.
+
+On a real cache the meter read **40.5% after a rewrite against 18.6% after a
+passthrough**. Re-measured over the same transcripts with exact commands and
+one population: **1.5% against 0.3%**. Both sides now count what entered the
+watch list, keyed by a digest of the whole command.
+
+Three comments in `Mode`, `Session` and `Scoreboard` cited the old numbers to
+justify a threshold. They now say the evidence was withdrawn rather than
+reading as settled.
+
 ## 1.8.0
 
 ### Two more runners, both with captured fixtures

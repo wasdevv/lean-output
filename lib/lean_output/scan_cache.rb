@@ -69,8 +69,18 @@ module LeanOutput
 
     # The cache is derived, so throwing it away is always safe and is the first
     # thing to try when a number looks wrong.
+    # Deleted file by file rather than with `FileUtils.rm_rf`, and not because
+    # rm_rf is wrong: requiring FileUtils here costs 6.9ms on a path the hook
+    # loads, and the lazy `require` that avoided that was silently removed by a
+    # formatter — leaving `FileUtils` undefined, the NameError swallowed by the
+    # rescue below, and `lean rescan` reporting failure while doing nothing.
+    # This directory is flat, so the loop is the whole job and depends on
+    # nothing that can be taken away.
     def self.clear
-            FileUtils.rm_rf(dir)
+      return true unless File.directory?(dir)
+
+      Dir.glob(File.join(dir, '*')).each { |file| File.delete(file) }
+      Dir.rmdir(dir)
       true
     rescue StandardError
       false

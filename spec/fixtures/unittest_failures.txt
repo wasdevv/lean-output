@@ -1,0 +1,29 @@
+test_also_passes (test_thing.ThingTest) ... ok
+test_compare (test_thing.ThingTest) ... FAIL
+test_passes (test_thing.ThingTest) ... ok
+test_raises (test_thing.ThingTest) ... ERROR
+test_skipped (test_thing.ThingTest) ... skipped 'nope'
+
+======================================================================
+ERROR: test_raises (test_thing.ThingTest)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/claude-1000/-home-was--swarm-worktrees-swarm-v1-3-melhorias/b10d2e66-596b-4af1-af13-2201a0b62a74/scratchpad/pytests/test_thing.py", line 7, in test_raises
+    def test_raises(self): raise ValueError("boom")
+ValueError: boom
+
+======================================================================
+FAIL: test_compare (test_thing.ThingTest)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/claude-1000/-home-was--swarm-worktrees-swarm-v1-3-melhorias/b10d2e66-596b-4af1-af13-2201a0b62a74/scratchpad/pytests/test_thing.py", line 6, in test_compare
+    def test_compare(self): self.assertEqual("x@y.com", "other@y.com")
+AssertionError: 'x@y.com' != 'other@y.com'
+- x@y.com
++ other@y.com
+
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.000s
+
+FAILED (failures=1, errors=1, skipped=1)

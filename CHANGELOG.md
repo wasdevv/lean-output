@@ -6,6 +6,34 @@ one. Measurements are from replaying real transcripts; where a number moved,
 both numbers are given, because a threshold with one number behind it is how
 this project got its longest-lived bug.
 
+## 1.8.0
+
+### Two more runners, both with captured fixtures
+
+`node --test` and `python -m unittest -v`. Both ship with their platform, which
+is why these two and not the eight other names `analyze` can flag: a compressor
+for a foreign tool needs that tool's real output, and the eight remaining ones
+wait for a machine that has them. `/lean fixture <file> <name>` is the path
+when you are on one.
+
+- **node --test**: TAP with a YAML block under every case, passing or not, and
+  a stack where six of seven frames are `node:internal/test_runner`. Failing
+  run **-52%**, green run **-84%**, every failure, message, `expected`/`actual`
+  and user `file:line` kept.
+- **python -m unittest -v**: one line per case — five hundred tests is five
+  hundred `... ok` — plus four lines of rules and a `Traceback` header per
+  failure. Failing run **-50%**, green run **-89%**. Traceback frames come out
+  in the same `file:line` shape the rest of the plugin emits.
+
+### A half-installed plugin does nothing instead of shouting
+
+The `/plugin update` that installed 1.7.0 left a cache directory with `bin`,
+`hooks` and `spec` and **no `lib`**. The manifest said 1.7.0, the hooks pointed
+at `bin/compress`, and it exited 1 with a stack trace on stderr before every
+tool result. This file promises the opposite — any error is passthrough, exit
+0, empty stdout — and the promise had a hole exactly there, because the
+requires sat outside the rescue that makes it. Fixed.
+
 ## 1.7.0
 
 ### The hook costs a third of what it did

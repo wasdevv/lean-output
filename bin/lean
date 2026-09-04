@@ -265,13 +265,14 @@ when nil then report(cwd)
 when '-v', '--version' then puts LeanOutput::VERSION
 when '-h', '--help'
   puts "usage: lean [#{LeanOutput::Mode::LEVELS.join('|')}|vault|analyze [root]|readback [root]|" \
-       'calibrate [root]|uncalibrate|trend|compare|unused|audit <path>|why <file> [cmd]|' \
+       'calibrate [root]|uncalibrate|trend|compare|unused|profile|audit <path>|why <file> [cmd]|' \
        'fixture <file> <name>|rescan]'
 when 'analyze' then analyze(ARGV[1..])
 when 'readback' then readback(ARGV[1])
 when 'calibrate' then calibrate(ARGV[1], cwd)
 when 'audit' then audit(ARGV[1])
 when 'trend' then trend(cwd)
+when 'profile' then puts LeanOutput::Profile.report
 when 'compare' then compare(ARGV[1..])
 when 'unused' then unused(ARGV[1..])
 when 'why' then why(ARGV[1], ARGV[2])

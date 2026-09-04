@@ -12,6 +12,8 @@ def debug(message)
   File.write(ENV["LEAN_OUTPUT_DEBUG"], "[#{Time.now}] #{message}\n", mode: "a")
 end
 
+started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
 begin
   # The payload is JSON, so it is UTF-8 by definition — but `read` tags it with
   # the locale's encoding, and under LANG=C that is US-ASCII. The strings inside
@@ -30,5 +32,11 @@ begin
 rescue StandardError => e
   debug("error: #{e.class}: #{e.message}")
 end
+
+# This process runs on every single tool call, and nothing has ever measured
+# what it costs. A hook that spends 200ms is spending it in front of the user,
+# on every call, forever — a bill nobody was shown. Off unless asked, appended
+# rather than aggregated, so the reader can see the tail and not just a mean.
+LeanOutput::Profile.record(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started)
 
 exit 0

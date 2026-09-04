@@ -250,6 +250,35 @@ RSpec.describe 'housekeeping' do
     end
   end
 
+  describe LeanOutput::Profile do
+    around do |example|
+      ENV['LEAN_OUTPUT_PROFILE'] = '1'
+      example.run
+      ENV.delete('LEAN_OUTPUT_PROFILE')
+    end
+
+    it 'records nothing unless asked' do
+      ENV.delete('LEAN_OUTPUT_PROFILE')
+      described_class.record(0.05)
+
+      expect(described_class.samples).to be_empty
+    end
+
+    # A mean hides the slow call, and the slow call is the one the user feels.
+    it 'reports the tail and not just the middle' do
+      ([0.001] * 99 + [0.5]).each { |seconds| described_class.record(seconds) }
+
+      report = described_class.report
+
+      expect(report).to include('p99', 'max 500.0ms')
+      expect(report).to include('every tool call')
+    end
+
+    it 'says so plainly when nothing has been timed' do
+      expect(described_class.report).to include('LEAN_OUTPUT_PROFILE=1')
+    end
+  end
+
   describe 'the library path' do
     # The scoreboard reads session state written by the hook, so a caller using
     # the gem directly saved bytes that appeared in no total anywhere.

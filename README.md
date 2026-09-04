@@ -55,6 +55,10 @@ The reference carries the head of what it withheld on purpose. The risk is not t
 
 `/lean` shows the current level and what it has saved; `/lean safe` switches. The level is written per working directory and read fresh on every tool call, so nothing needs restarting.
 
+### What it costs
+
+Every number in this README is about bytes removed. None was about the time spent removing them, and the hook is a process per tool call: measured with `/lean profile` on a normal laptop, **78ms end to end, of which 47ms is the Ruby interpreter starting and around 1ms is the work.** It is paid on every call whether or not anything is rewritten. Against a result carried for hundreds of turns that is a good trade, and it is now a number you can check rather than an assumption — set `LEAN_OUTPUT_PROFILE=1` and run `/lean profile`.
+
 ### The floor is measured, and `/lean calibrate` is how it stays that way
 
 Every threshold below cites a measurement, and until now the path from the measurement back to the constant was a person reading a table and editing this repo. That path was walked three times and got it wrong once — `Readback::POINTER` was the ledger's reference size standing in for the vault's spill, four times cheaper than the thing it priced, on both sides of the arithmetic every floor rests on. It also goes stale in silence: the spill floor was measured on one corpus, and the sentence at the top of this file claiming the pointer was 93% of the win was true at a 500B floor and is 31% at 16kB.

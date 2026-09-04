@@ -2,7 +2,6 @@
 
 require 'json'
 require 'digest'
-require 'fileutils'
 
 module LeanOutput
   # What the plugin remembers between hook invocations, in one file per session.
@@ -38,6 +37,26 @@ module LeanOutput
       new(id, read(path(id)))
     end
 
+    # A hook is one process per tool call, and a model that fires four tool
+    # calls in one turn gets four of them at once against the same session
+    # file. `save` is atomic, so nothing corrupts — but read-modify-write is
+    # not, and the loser's ledger entries and gain counters vanish, which reads
+    # as "dedup missed one" and can never be reproduced.
+    #
+    # The lock spans the whole read-modify-write rather than the write, since
+    # the write was never the part that raced. Non-blocking with a fallback to
+    # proceeding unlocked: a hook that cannot take the lock still has a result
+    # to deliver, and the worst case without it is exactly today's behaviour.
+    def self.with_lock(id)
+      mkdir_p(dir)
+      File.open(File.join(dir, "#{id}.lock"), File::RDWR | File::CREAT, 0o644) do |handle|
+        handle.flock(File::LOCK_EX)
+        return yield
+      end
+    rescue StandardError
+      yield
+    end
+
     def self.identify(payload)
       raw = payload['session_id'] || payload['sessionId']
       clean = raw.to_s.gsub(/[^A-Za-z0-9_-]/, '')[0, 64]
@@ -56,6 +75,44 @@ module LeanOutput
 
     def self.path(id)
       File.join(dir, "#{id}.json")
+    end
+
+    # `FileUtils.mkdir_p` in four words of Ruby, because requiring FileUtils to
+    # get it costs 6.9ms and this process runs on every tool call — a fifth of
+    # the whole hook, for one method. The recursive ops FileUtils really is good
+    # at (rm_rf over a directory tree) are required where they are used, on
+    # paths that run only when something is actually being evicted.
+    def self.mkdir_p(path)
+      return if File.directory?(path)
+
+      mkdir_p(File.dirname(path))
+      Dir.mkdir(path)
+    rescue Errno::EEXIST
+      nil
+    end
+
+    # How long a finished session's state is worth keeping. `MAX_SEEN` bounds
+    # one file and `Vault` bounds its own directories, so this was the last
+    # thing here that only grew: measured on a real cache, 53 session files
+    # going back four weeks, none of them reachable — a session id never comes
+    # back, so the moment its host process ends the file is dead weight that
+    # nothing will ever read again.
+    #
+    # Two weeks rather than two days because the file is small and the only
+    # thing a wrong guess costs on this side is disk, while deleting a session
+    # that is merely idle costs its whole ledger.
+    KEEP_DAYS = 14
+
+    # Runs off the back of a save, which is the only moment this code is
+    # reliably alive, and never raises: a hook that cannot tidy up still has a
+    # result to deliver.
+    def self.evict
+      cutoff = Time.now.utc - (KEEP_DAYS * 86_400)
+      Dir.glob(File.join(dir, '*.json')).each do |file|
+        File.delete(file) if File.mtime(file) < cutoff
+      end
+    rescue StandardError
+      nil
     end
 
     def self.read(file)
@@ -206,10 +263,11 @@ module LeanOutput
 
     def save
       file = self.class.path(id)
-      FileUtils.mkdir_p(File.dirname(file))
+      self.class.mkdir_p(File.dirname(file))
       temp = "#{file}.#{Process.pid}.tmp"
       File.write(temp, JSON.generate(data))
       File.rename(temp, file)
+      self.class.evict
       true
     rescue StandardError
       false

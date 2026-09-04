@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "ruby ${CLAUDE_PLUGIN_ROOT}/bin/compress"
+            "command": "ruby --disable=gems ${CLAUDE_PLUGIN_ROOT}/bin/compress"
           }
         ]
       },
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "ruby ${CLAUDE_PLUGIN_ROOT}/bin/compress"
+            "command": "ruby --disable=gems ${CLAUDE_PLUGIN_ROOT}/bin/compress"
           }
         ]
       },
@@ -24,7 +24,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "ruby ${CLAUDE_PLUGIN_ROOT}/bin/compress"
+            "command": "ruby --disable=gems ${CLAUDE_PLUGIN_ROOT}/bin/compress"
           }
         ]
       }
@@ -35,7 +35,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "ruby ${CLAUDE_PLUGIN_ROOT}/bin/compress"
+            "command": "ruby --disable=gems ${CLAUDE_PLUGIN_ROOT}/bin/compress"
           }
         ]
       },
@@ -44,7 +44,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "ruby ${CLAUDE_PLUGIN_ROOT}/bin/compress"
+            "command": "ruby --disable=gems ${CLAUDE_PLUGIN_ROOT}/bin/compress"
           }
         ]
       }

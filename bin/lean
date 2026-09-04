@@ -11,11 +11,17 @@
 # hook that reads it is a fresh process on every tool call. Keyed by working
 # directory: this command knows where it is, not which conversation it is in.
 
+require 'fileutils'
+
 require_relative '../lib/lean_output'
 
 def report(cwd)
   level = LeanOutput::Mode.resolve(cwd)
   puts "lean-output #{LeanOutput::VERSION} — mode: #{level}#{source(cwd, level)}"
+  # Printed before the savings rather than after, because it is the thing that
+  # decides them, and because a floor nobody can date is a floor nobody audits.
+  receipt = LeanOutput::Calibration.describe(cwd)
+  puts "calibrated: #{receipt}" if receipt
   puts LeanOutput::Scoreboard.render(cwd)
 end
 
@@ -39,9 +45,148 @@ def readback(root)
   puts LeanOutput::Readback.report(spills)
 end
 
-def analyze(root)
-  results = LeanOutput::Corpus.analyze(root: root || LeanOutput::Corpus::DEFAULT_ROOT)
+# `--since <days>` and `--project <name>` because one ranking over every
+# transcript ever written answers "where were the bytes", and the question worth
+# asking is where they are now, in this repo.
+def analyze(args)
+  options = flags(args)
+  results = LeanOutput::Corpus.analyze(root: options[:root] || LeanOutput::Corpus::DEFAULT_ROOT,
+                                       since: options[:since], project: options[:project])
+  puts scope_line(options) if options[:since] || options[:project]
   puts LeanOutput::Corpus.report(results)
+end
+
+def scope_line(options)
+  parts = []
+  parts << "the last #{plural(options[:since], 'day')}" if options[:since]
+  parts << "project matching #{options[:project].inspect}" if options[:project]
+  "scope: #{parts.join(', ')}"
+end
+
+def flags(args)
+  options = {}
+  rest = []
+  until args.empty?
+    token = args.shift
+    case token
+    when '--since' then options[:since] = args.shift.to_i
+    when '--project' then options[:project] = args.shift
+    else rest << token
+    end
+  end
+  options[:root] = rest.first
+  options
+end
+
+# What each level would do to the same corpus, so "which level should I be on"
+# stops being a week of switching and waiting.
+def compare(args)
+  options = flags(args)
+  rows = LeanOutput::Corpus.compare(root: options[:root] || LeanOutput::Corpus::DEFAULT_ROOT,
+                                    since: options[:since], project: options[:project])
+  puts scope_line(options) if options[:since] || options[:project]
+  puts LeanOutput::Corpus.comparison(rows)
+  puts "current: #{LeanOutput::Mode.resolve(Dir.pwd)}"
+end
+
+# Rung 1 of the README as a diagnostic. Where the agent is asking for things it
+# then never refers to — a habit to change, not a byte to compress: measured,
+# output nothing refers to again is 4.8% of the token-turns, which is why this
+# prints rather than decides.
+def unused(args)
+  options = flags(args)
+  rows = LeanOutput::Usage.scan(root: options[:root] || LeanOutput::Usage::DEFAULT_ROOT,
+                                since: options[:since], project: options[:project])
+  puts scope_line(options) if options[:since] || options[:project]
+  puts LeanOutput::Usage.report(rows)
+end
+
+# One calibration cannot tell drift from noise. Three months of them can: a
+# floor that keeps landing on the same number has earned being left alone, and
+# one that wanders is a corpus changing shape underneath it.
+def trend(cwd)
+  rows = LeanOutput::Calibration.trend(cwd)
+  return puts "lean-output: nothing calibrated here yet — run `lean calibrate`" unless rows
+
+  puts "lean-output calibration history — #{cwd}"
+  puts rows
+end
+
+# Why this output was left alone, which is the question `analyze` provokes and
+# has never been able to answer. Reads the command and the text and reports
+# which gate declined, rather than leaving "unclaimed" to mean six things.
+def why(path, command)
+  return warn('lean-output: usage: lean why <file with the output> [command]') unless path
+  return warn("lean-output: no such file — #{path}") unless File.file?(path)
+
+  output = File.read(path)
+  claimants = LeanOutput::Detector.for(command.to_s, output)
+  puts "lean-output why — #{path} (#{LeanOutput::Text.human(output.bytesize)}, #{output.lines.size} lines)"
+  puts "  command: #{command.to_s.empty? ? '(none given — output has to identify itself)' : command}"
+  verdict(output, command, claimants)
+end
+
+def verdict(output, command, claimants)
+  policy = LeanOutput::Mode.policy(LeanOutput::Mode.resolve(Dir.pwd), Dir.pwd)
+  return puts '  no compressor recognises this shape — it would pass through, or spill if big enough' if claimants.empty?
+
+  puts "  claimed by: #{claimants.map { |c| c.name.split('::').last }.join(', ')}"
+  if output.bytesize < policy[:min_bytes]
+    return puts "  but it is under the #{policy[:min_bytes]}B floor for this level, so nothing runs"
+  end
+
+  rewritten = LeanOutput.compress(output, command: command)
+  ratio = rewritten.bytesize.to_f / output.bytesize
+  ceiling = LeanOutput.lossless?(output, command: command) ? policy[:lossless_ratio] : policy[:ratio]
+  puts format('  rewrite is %.0f%% of the original; this level swaps in below %.0f%%  → %s',
+              ratio * 100, (ceiling || 1) * 100, ratio < (ceiling || 1) ? 'claimed' : 'declined')
+end
+
+# Turns a result you have in front of you into a fixture, which is the step
+# every compressor on the roadmap is actually blocked on. A compressor for a
+# foreign tool needs that tool's real output, and writing one from memory is
+# the mistake this repo has already paid for once.
+def fixture(path, name)
+  return warn('lean-output: usage: lean fixture <file> <name>') unless path && name
+  return warn("lean-output: no such file — #{path}") unless File.file?(path)
+
+  target = File.expand_path("../spec/fixtures/#{name}.txt", __dir__)
+  return warn("lean-output: #{target} already exists") if File.exist?(target)
+
+  FileUtils.mkdir_p(File.dirname(target))
+  FileUtils.cp(path, target)
+  puts "lean-output: captured #{LeanOutput::Text.human(File.size(target))} to #{target}"
+  puts '  next: a compressor, and a spec asserting every file:line in it survives'
+end
+
+# The sweep, writing its own answer down instead of printing a table for a
+# human to copy into a constant. That copy has been made three times and was
+# wrong once, and the constant it produced goes stale without anything
+# noticing — which is the whole argument for this command existing.
+def calibrate(root, cwd)
+  measured = LeanOutput::Calibration.measure(root: root || LeanOutput::Readback::DEFAULT_ROOT)
+  return puts refusal(cwd) unless measured
+
+  LeanOutput::Calibration.write(cwd, measured)
+  puts "lean-output: calibrated #{cwd}"
+  puts "  #{LeanOutput::Calibration.describe(cwd)}"
+  puts format('  worth %+.1fM token-turns against this corpus; default was %s',
+              measured.net / 1_000_000.0, LeanOutput::Text.human(LeanOutput::Mode::SPILL_BYTES))
+end
+
+# Nothing written, and the reason said out loud. A corpus too small to answer
+# and a corpus that answers "do not spill here" are different facts, and the
+# second one is worth knowing.
+def refusal(cwd)
+  spills = LeanOutput::Readback.collect(root: LeanOutput::Readback::DEFAULT_ROOT)
+  if spills.size < LeanOutput::Calibration::MIN_SPILLS
+    "lean-output: not calibrating — #{plural(spills.size, 'spill')} in the transcripts, " \
+      "#{LeanOutput::Calibration::MIN_SPILLS} needed. Keeping the default floor of " \
+      "#{LeanOutput::Text.human(LeanOutput::Mode::SPILL_BYTES)}."
+  else
+    "lean-output: not calibrating #{cwd} — no floor pays for itself on this corpus, " \
+      'so every spill here is costing more than it saves. Keeping the default.'
+  end
 end
 
 # What the vault is holding, because a spill writes a file and then nothing
@@ -75,15 +220,66 @@ def plural(count, word)
   "#{count} #{word}#{'s' unless count == 1}"
 end
 
+# The receipt for a rewrite, after the fact. The footer names what a compressor
+# dropped, and checking whether it told the truth used to mean reproducing the
+# tool call by hand — three times in one afternoon, which is what a missing
+# command feels like from the inside. The vault already holds the original, so
+# the comparison is a file read away.
+def audit(path)
+  return warn('lean-output: usage: lean audit <path from a pointer>') unless path
+  return warn("lean-output: no such file — #{path}") unless File.file?(path)
+
+  original = File.read(path)
+  command = File.basename(path, '.txt').sub(/\A\d+-/, '').tr('-', ' ')
+  rewritten = LeanOutput.compress(original, command: command)
+  puts "lean-output audit — #{path}"
+  puts format('  command guessed from the name: %s', command)
+  puts format('  original   %9s  %d lines', LeanOutput::Text.human(original.bytesize), original.lines.size)
+  compared(original, rewritten, command)
+end
+
+def compared(original, rewritten, command)
+  if rewritten.equal?(original) || rewritten == original
+    return puts '  no compressor claims this — it went past whole, which is why the vault took it'
+  end
+
+  puts format('  rewritten  %9s  %d lines  (-%d%%)', LeanOutput::Text.human(rewritten.bytesize),
+              rewritten.lines.size, 100 - (100.0 * rewritten.bytesize / original.bytesize).round)
+  dropped = LeanOutput.discards(original, command: command)
+  puts "  dropped: #{dropped.empty? ? 'nothing named' : dropped.join(', ')}"
+  puts format('  locations kept: %d of %d', locations(rewritten).size, locations(original).size)
+end
+
+# The invariant the bench enforces, checkable on one file: every `file:line` in
+# the input has to survive into the output. It is what separates compression
+# from truncation, and it is the thing a footer cannot prove about itself.
+def locations(text)
+  text.scan(%r{[\w./-]+\.\w+:\d+}).uniq
+end
+
 cwd = Dir.pwd
 argument = ARGV.first
 
 case argument
 when nil then report(cwd)
 when '-v', '--version' then puts LeanOutput::VERSION
-when '-h', '--help' then puts "usage: lean [#{LeanOutput::Mode::LEVELS.join('|')}|vault|analyze [root]|readback [root]]"
-when 'analyze' then analyze(ARGV[1])
+when '-h', '--help'
+  puts "usage: lean [#{LeanOutput::Mode::LEVELS.join('|')}|vault|analyze [root]|readback [root]|" \
+       'calibrate [root]|uncalibrate|trend|compare|unused|profile|audit <path>|why <file> [cmd]|' \
+       'fixture <file> <name>|rescan]'
+when 'analyze' then analyze(ARGV[1..])
 when 'readback' then readback(ARGV[1])
+when 'calibrate' then calibrate(ARGV[1], cwd)
+when 'audit' then audit(ARGV[1])
+when 'trend' then trend(cwd)
+when 'profile' then puts LeanOutput::Profile.report
+when 'compare' then compare(ARGV[1..])
+when 'unused' then unused(ARGV[1..])
+when 'why' then why(ARGV[1], ARGV[2])
+when 'fixture' then fixture(ARGV[1], ARGV[2])
+when 'rescan' then puts LeanOutput::ScanCache.clear ? 'lean-output: scan cache cleared' : 'lean-output: nothing to clear'
+when 'uncalibrate'
+  puts LeanOutput::Calibration.clear(cwd) ? "lean-output: back to the default floor in #{cwd}" : 'lean-output: nothing calibrated here'
 when 'vault' then vault
 else
   level = LeanOutput::Mode.write(cwd, argument)

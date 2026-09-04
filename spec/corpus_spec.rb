@@ -62,6 +62,21 @@ RSpec.describe LeanOutput::Corpus do
     expect(analyze(@root).map(&:command).uniq).to eq(['bundle exec'])
   end
 
+  # A prefix that survives the stripping becomes the label, and the whole ranking
+  # is by label — so `cd X; rspec` ranked under a bucket called `cd`, which reads
+  # as a command nothing could ever claim.
+  it 'strips every shape of prefix before naming the command' do
+    commands = ['cd /repo && bundle exec rspec', 'cd /repo; bundle exec rspec',
+                'BUNDLE_GEMFILE=/repo/Gemfile bundle exec rspec',
+                'cd /repo; RAILS_ENV=test timeout 60 bundle exec rspec']
+    entries = commands.each_with_index.flat_map do |command, i|
+      [call("t#{i}", 'Bash', { 'command' => command }), result("t#{i}", bash_response("nothing\n" * 5))]
+    end
+    transcript(@root, 'project-a', entries)
+
+    expect(analyze(@root).map(&:command).uniq).to eq(['bundle exec'])
+  end
+
   it 'counts a result no compressor claims as unclaimed rather than skipping it' do
     transcript(@root, 'project-a', [call('t1', 'Bash', { 'command' => 'echo hi' }),
                                     result('t1', bash_response('hi'))])

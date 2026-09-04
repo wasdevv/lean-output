@@ -2,7 +2,9 @@
 
 **A Claude Code plugin that keeps long tool output out of your context window — it spills the big results to disk and hands the model a pointer, withholds what the context already holds, and compresses RSpec, RuboCop, Brakeman, `git diff`, cargo and `grep` on the way past. Fewer tokens, zero lost failures.**
 
-The compressors came first and are the smallest part of the win: measured over 94 real transcripts, the pointer accounts for **93%** of the bytes saved and rung 7 for **1.6%**. What follows is in that order — cheapest rung first, compressors last.
+The compressors came first and are not the largest part of the win. Replayed over a corpus of 12008 real tool results, 10.54MB, the split is **43%** compressors, **31%** the vault's pointer and **26%** the ledger's — pointers 57% together. What follows is in ladder order — cheapest rung first, compressors last.
+
+That split used to read 93% pointer against 1.6% compressors, and the number moved because the spill floor did: at 500B the vault took 1307 results in this corpus, at the measured floor of 16kB it takes 18. Both numbers are real; a pointer that gets followed is not a saving, and the floor is where it stopped being one.
 
 Test suites are chatty. A single failing RSpec run ships progress dots, seeds, profiling tables, SimpleCov reports and gem backtraces into your context window — thousands of tokens the model doesn't need. lean-output rewrites those outputs on the fly via a `PostToolUse` hook, keeping **every failure, message and `file:line`** and dropping everything else.
 
@@ -52,6 +54,26 @@ The reference carries the head of what it withheld on purpose. The risk is not t
 ## Levels
 
 `/lean` shows the current level and what it has saved; `/lean safe` switches. The level is written per working directory and read fresh on every tool call, so nothing needs restarting.
+
+### What it costs
+
+Every number in this README is about bytes removed. None was about the time spent removing them, and the hook is a process per tool call: measured with `/lean profile` on a normal laptop, **23ms end to end, of which 8ms is the Ruby interpreter starting and around 1ms is the work.** It is paid on every call whether or not anything is rewritten.
+
+It was **71ms** three changes ago, and all three were the same mistake in different places — paying on every tool call for something only some other command needed.
+
+| | |
+|---|---|
+| launching with RubyGems | 45ms of interpreter startup against 8ms without it |
+| `fileutils`, for `mkdir_p` | 6.9ms, replaced by four lines that do the same thing |
+| `tmpdir`, which pulls `fileutils` back in | required by the corpus replay, which the hook never runs |
+
+Everything the hook requires is a default gem, so dropping RubyGems leaves the output byte-identical — checked by md5 on a real compressing payload — with a fallback that brings RubyGems back if some install has replaced one of them, because a LoadError in the hook would take the whole thing down. Against a result carried for hundreds of turns that is a good trade, and it is now a number you can check rather than an assumption — set `LEAN_OUTPUT_PROFILE=1` and run `/lean profile`.
+
+### The floor is measured, and `/lean calibrate` is how it stays that way
+
+Every threshold below cites a measurement, and until now the path from the measurement back to the constant was a person reading a table and editing this repo. That path was walked three times and got it wrong once — `Readback::POINTER` was the ledger's reference size standing in for the vault's spill, four times cheaper than the thing it priced, on both sides of the arithmetic every floor rests on. It also goes stale in silence: the spill floor was measured on one corpus, and the sentence at the top of this file claiming the pointer was 93% of the win was true at a 500B floor and is 31% at 16kB.
+
+`/lean calibrate` runs the sweep against your own transcripts, takes the floor at the top of the curve, and writes it for this working directory — with the date and the number of spills behind it, printed by `/lean` every time. It calibrates `spill` and nothing else, because `spill` is the only constant the sweep measures. Under 30 spills it refuses and says so rather than fitting noise; `/lean uncalibrate` goes back to the default.
 
 | Level | What it does |
 |---|---|

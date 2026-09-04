@@ -21,9 +21,13 @@ require_relative 'lean_output/detector'
 require_relative 'lean_output/runner'
 require_relative 'lean_output/corpus'
 require_relative 'lean_output/readback'
+require_relative 'lean_output/scan_cache'
+require_relative 'lean_output/profile'
+require_relative 'lean_output/usage'
+require_relative 'lean_output/calibration'
 
 module LeanOutput
-  VERSION = '1.6.0'
+  VERSION = '1.7.0'
 
   # Entry point for callers outside the Claude Code hook: agent orchestrators
   # injecting tool output into a prompt, CI scripts, log processors.
@@ -39,11 +43,20 @@ module LeanOutput
   # entries, never by cutting through one. The hook's own thresholds (minimum
   # line count, minimum saving) are policy in Runner, not here: a caller asking
   # for compression has already decided the text is too long.
-  def self.compress(text, command: nil, budget: nil, footer: false)
+  # `credit:` names a session to bill this call to, and exists because the
+  # library path was invisible to every number this plugin reports. The
+  # scoreboard reads session state written by the hook; a caller using the gem
+  # directly — a judge assembling a prompt, a CI script — saved bytes that
+  # appeared in no total, so `lean` under-reported exactly the usage its owner
+  # could not see. Opt-in rather than automatic: a library call has no session
+  # id of its own, and inventing one would put a stranger's bytes in the
+  # running conversation's ledger.
+  def self.compress(text, command: nil, budget: nil, footer: false, credit: nil)
     original = text.to_s
     rewritten = rewrite(original, command)
     result = rewritten ? Budget.fit(rewritten, budget) : original
     result = Budget.clip(result, budget)
+    bill(credit, original, result, command) if credit
 
     return result if result.equal?(original) || !footer
 
@@ -51,6 +64,20 @@ module LeanOutput
   rescue StandardError
     text.to_s
   end
+
+  # Never raises and never blocks the rewrite: a caller asked for shorter text,
+  # not for bookkeeping, and a full disk is not a reason to hand back nothing.
+  def self.bill(name, original, result, command)
+    session = Session.load({ 'session_id' => "lib-#{name}" })
+    session.advance(original.bytesize)
+    session.credit(original.bytesize, result.bytesize)
+    session.observe(command.to_s.empty? ? 'library call' : "`#{command}`",
+                    rewritten: !result.equal?(original) && result != original)
+    session.save
+  rescue StandardError
+    nil
+  end
+  private_class_method :bill
 
   # Whether every compressor claiming this text keeps what it replaces. The
   # hook uses it to pick the floor a rewrite has to clear before it is worth

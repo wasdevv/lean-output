@@ -3,14 +3,32 @@
 # passthrough (exit 0, no stdout) so a bug here can never break a session.
 # Set LEAN_OUTPUT_DEBUG=/some/file to log payloads and decisions.
 
-require "json"
-require_relative "../lib/lean_output"
+# Loaded without RubyGems, which is what the hook is launched with: measured on
+# a normal laptop, `ruby -e ""` costs 45ms and `ruby --disable=gems -e ""` costs
+# 8ms, and this process runs on every single tool call. End to end that is 71ms
+# against 31ms for byte-identical output.
+#
+# Everything required here is a default gem, so it resolves from the stdlib load
+# path with RubyGems absent. The rescue is for the install where one of them was
+# replaced by a real gem: RubyGems comes back, the requires are retried, and the
+# hook is merely as slow as it used to be. A LoadError out here would take the
+# whole hook down, which is the one thing this file promises never to do.
+begin
+  require "json"
+  require_relative "../lib/lean_output"
+rescue LoadError
+  require "rubygems"
+  require "json"
+  require_relative "../lib/lean_output"
+end
 
 def debug(message)
   return unless ENV["LEAN_OUTPUT_DEBUG"]
 
   File.write(ENV["LEAN_OUTPUT_DEBUG"], "[#{Time.now}] #{message}\n", mode: "a")
 end
+
+started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
 begin
   # The payload is JSON, so it is UTF-8 by definition — but `read` tags it with
@@ -30,5 +48,11 @@ begin
 rescue StandardError => e
   debug("error: #{e.class}: #{e.message}")
 end
+
+# This process runs on every single tool call, and nothing has ever measured
+# what it costs. A hook that spends 200ms is spending it in front of the user,
+# on every call, forever — a bill nobody was shown. Off unless asked, appended
+# rather than aggregated, so the reader can see the tail and not just a mean.
+LeanOutput::Profile.record(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started)
 
 exit 0

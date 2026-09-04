@@ -101,6 +101,18 @@ def unused(args)
   puts LeanOutput::Usage.report(rows)
 end
 
+# The half of the bill no rung can reach. Every other number here is about
+# tool output; this one is about what the model spends asking — 13.15MB against
+# 10.64MB on a real corpus, and 55% of what tool calls cost. It reports and
+# never rewrites, because the tokens are gone the moment the call is emitted.
+def input(args)
+  options = flags(args)
+  rows = LeanOutput::Input.scan(root: options[:root] || LeanOutput::Input::DEFAULT_ROOT,
+                                since: options[:since], project: options[:project])
+  puts scope_line(options) if options[:since] || options[:project]
+  puts LeanOutput::Input.report(rows)
+end
+
 # One calibration cannot tell drift from noise. Three months of them can: a
 # floor that keeps landing on the same number has earned being left alone, and
 # one that wanders is a corpus changing shape underneath it.
@@ -265,7 +277,7 @@ when nil then report(cwd)
 when '-v', '--version' then puts LeanOutput::VERSION
 when '-h', '--help'
   puts "usage: lean [#{LeanOutput::Mode::LEVELS.join('|')}|vault|analyze [root]|readback [root]|" \
-       'calibrate [root]|uncalibrate|trend|compare|unused|profile|audit <path>|why <file> [cmd]|' \
+       'calibrate [root]|uncalibrate|trend|compare|unused|input|profile|audit <path>|why <file> [cmd]|' \
        'fixture <file> <name>|rescan]'
 when 'analyze' then analyze(ARGV[1..])
 when 'readback' then readback(ARGV[1])
@@ -275,6 +287,7 @@ when 'trend' then trend(cwd)
 when 'profile' then puts LeanOutput::Profile.report
 when 'compare' then compare(ARGV[1..])
 when 'unused' then unused(ARGV[1..])
+when 'input' then input(ARGV[1..])
 when 'why' then why(ARGV[1], ARGV[2])
 when 'fixture' then fixture(ARGV[1], ARGV[2])
 when 'rescan' then puts LeanOutput::ScanCache.clear ? 'lean-output: scan cache cleared' : 'lean-output: nothing to clear'

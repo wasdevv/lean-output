@@ -90,6 +90,20 @@ RSpec.describe 'housekeeping' do
       expect(calls).to eq(2)
     end
 
+    # `clear` is what `lean rescan` calls, and it reported failure while doing
+    # nothing after a formatter removed the require it depended on. A rescue
+    # that turns a NameError into `false` is exactly the shape that needs a
+    # test saying the happy path actually happened.
+    it 'really removes the memo and says so' do
+      file = File.join(@dir, 'transcript.jsonl')
+      File.write(file, "one\n")
+      described_class.fetch('spec', file) { [{ 'n' => 1 }] }
+      expect(Dir.glob(File.join(@dir, 'scan', '*.json'))).not_to be_empty
+
+      expect(described_class.clear).to be(true)
+      expect(Dir.glob(File.join(@dir, 'scan', '*.json'))).to be_empty
+    end
+
     # Every failure mode is a miss, because a miss is the answer the caller
     # wanted anyway — only slower.
     it 'recomputes rather than raising when the memo is damaged' do

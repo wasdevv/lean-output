@@ -8,7 +8,7 @@ module LeanOutput
   # gone all resolve the same way, by reading the output.
   class Detector
     COMPRESSORS = [Compressors::Rspec, Compressors::Rubocop, Compressors::Brakeman, Compressors::GitDiff,
-                   Compressors::Cargo, Compressors::Grep].freeze
+                   Compressors::Cargo, Compressors::Grep, Compressors::NodeTest].freeze
     # Cargo is absent on purpose: telling a rustc diagnostic from a successful
     # `cargo run` followed by the program's own stdout needs the subcommand, so
     # without a command there is no safe way to claim the output. Grep is absent

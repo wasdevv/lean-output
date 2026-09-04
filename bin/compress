@@ -13,13 +13,27 @@
 # replaced by a real gem: RubyGems comes back, the requires are retried, and the
 # hook is merely as slow as it used to be. A LoadError out here would take the
 # whole hook down, which is the one thing this file promises never to do.
+#
+# And if it cannot be loaded at all, this file's whole promise applies: any
+# error means passthrough, exit 0, no stdout. That promise used to have a hole
+# exactly here, because the requires sat outside the rescue that makes it.
+#
+# Not hypothetical. A `/plugin update` left a cache directory holding `bin`,
+# `hooks` and `spec` but no `lib` — the manifest said 1.7.0, the hooks pointed
+# at this file, and this file exited 1 with a stack trace on stderr before
+# every single tool result. A half-installed plugin has to degrade to doing
+# nothing, which is what the user had before installing it.
 begin
   require "json"
   require_relative "../lib/lean_output"
 rescue LoadError
-  require "rubygems"
-  require "json"
-  require_relative "../lib/lean_output"
+  begin
+    require "rubygems"
+    require "json"
+    require_relative "../lib/lean_output"
+  rescue LoadError
+    exit 0
+  end
 end
 
 def debug(message)

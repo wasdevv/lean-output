@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: tudo verde 0
+ok 1 - tudo verde 0
+  ---
+  duration_ms: 0.69814
+  type: 'test'
+  ...
+# Subtest: tudo verde 1
+ok 2 - tudo verde 1
+  ---
+  duration_ms: 0.120594
+  type: 'test'
+  ...
+# Subtest: tudo verde 2
+ok 3 - tudo verde 2
+  ---
+  duration_ms: 0.080891
+  type: 'test'
+  ...
+# Subtest: tudo verde 3
+ok 4 - tudo verde 3
+  ---
+  duration_ms: 0.072916
+  type: 'test'
+  ...
+# Subtest: tudo verde 4
+ok 5 - tudo verde 4
+  ---
+  duration_ms: 0.072395
+  type: 'test'
+  ...
+# Subtest: tudo verde 5
+ok 6 - tudo verde 5
+  ---
+  duration_ms: 0.072585
+  type: 'test'
+  ...
+# Subtest: tudo verde 6
+ok 7 - tudo verde 6
+  ---
+  duration_ms: 0.066905
+  type: 'test'
+  ...
+# Subtest: tudo verde 7
+ok 8 - tudo verde 7
+  ---
+  duration_ms: 0.061004
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 52.033624

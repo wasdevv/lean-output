@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require 'json'
-require 'tmpdir'
 
 module LeanOutput
   # What this plugin would have done to work that already happened.
@@ -137,6 +136,12 @@ module LeanOutput
     # this replay is the ten minutes that made `calibrate` expensive enough to
     # run once and then trust for a year.
     def self.replay_file(file)
+      # Required here rather than at the top, because `tmpdir` pulls in
+      # `fileutils` and this file is loaded by the hook, which runs on every
+      # tool call and never replays anything. The two together were 7.7ms of a
+      # 31ms hook — a quarter of it, spent loading a dependency of a command
+      # nobody ran.
+      require 'tmpdir'
       rows = []
       Dir.mktmpdir('lean-output-corpus') do |state|
         with_state(state) do

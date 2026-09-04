@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require 'digest'
-require 'fileutils'
 
 module LeanOutput
   # The rung that stops answering "what is the shortest text that carries this
@@ -154,11 +153,11 @@ module LeanOutput
     # to send and only needs somewhere for the original to survive.
     def self.store(session, label, output)
       dir = File.join(root, Digest::SHA256.hexdigest(session.id)[0, SESSION_CHARS])
-      FileUtils.mkdir_p(dir)
+      Session.mkdir_p(dir)
       path = File.join(dir, format('%04d-%s.txt', session.seq, slug(label)))
       File.write(path, output)
       prune(dir)
-      FileUtils.rm_rf(evictable)
+      evict(evictable)
       path
     rescue StandardError
       nil
@@ -179,6 +178,25 @@ module LeanOutput
     # the promise being kept: a reference may point at anything still inside
     # it, so nothing inside it may be deleted.
     QUIET_HOURS = 6
+
+    # Required here rather than at the top: a recursive delete is the one thing
+    # FileUtils does that is not four lines, and it runs only when a session
+    # directory is actually being reclaimed — rare enough that the 6.9ms belongs
+    # on that path and not on every tool call.
+    def self.evict(dirs)
+      return if dirs.empty?
+
+      require 'fileutils'
+      FileUtils.rm_rf(dirs)
+    end
+    private_class_method :evict
+
+    def self.delete(file)
+      File.delete(file)
+    rescue StandardError
+      nil
+    end
+    private_class_method :delete
 
     def self.evictable
       stale = sessions.drop(SESSIONS)
@@ -210,7 +228,7 @@ module LeanOutput
 
     def self.prune(dir)
       files = Dir.glob(File.join(dir, '*.txt')).sort_by { |file| File.basename(file)[/\A\d+/].to_i }
-      FileUtils.rm_f(doomed(files))
+      doomed(files).each { |file| delete(file) }
     end
     private_class_method :prune
 

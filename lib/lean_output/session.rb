@@ -2,7 +2,6 @@
 
 require 'json'
 require 'digest'
-require 'fileutils'
 
 module LeanOutput
   # What the plugin remembers between hook invocations, in one file per session.
@@ -49,7 +48,7 @@ module LeanOutput
     # proceeding unlocked: a hook that cannot take the lock still has a result
     # to deliver, and the worst case without it is exactly today's behaviour.
     def self.with_lock(id)
-      FileUtils.mkdir_p(dir)
+      mkdir_p(dir)
       File.open(File.join(dir, "#{id}.lock"), File::RDWR | File::CREAT, 0o644) do |handle|
         handle.flock(File::LOCK_EX)
         return yield
@@ -76,6 +75,20 @@ module LeanOutput
 
     def self.path(id)
       File.join(dir, "#{id}.json")
+    end
+
+    # `FileUtils.mkdir_p` in four words of Ruby, because requiring FileUtils to
+    # get it costs 6.9ms and this process runs on every tool call — a fifth of
+    # the whole hook, for one method. The recursive ops FileUtils really is good
+    # at (rm_rf over a directory tree) are required where they are used, on
+    # paths that run only when something is actually being evicted.
+    def self.mkdir_p(path)
+      return if File.directory?(path)
+
+      mkdir_p(File.dirname(path))
+      Dir.mkdir(path)
+    rescue Errno::EEXIST
+      nil
     end
 
     # How long a finished session's state is worth keeping. `MAX_SEEN` bounds
@@ -250,7 +263,7 @@ module LeanOutput
 
     def save
       file = self.class.path(id)
-      FileUtils.mkdir_p(File.dirname(file))
+      self.class.mkdir_p(File.dirname(file))
       temp = "#{file}.#{Process.pid}.tmp"
       File.write(temp, JSON.generate(data))
       File.rename(temp, file)

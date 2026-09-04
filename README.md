@@ -57,9 +57,17 @@ The reference carries the head of what it withheld on purpose. The risk is not t
 
 ### What it costs
 
-Every number in this README is about bytes removed. None was about the time spent removing them, and the hook is a process per tool call: measured with `/lean profile` on a normal laptop, **31ms end to end, of which about 26ms is loading this library and around 1ms is the work.** It is paid on every call whether or not anything is rewritten.
+Every number in this README is about bytes removed. None was about the time spent removing them, and the hook is a process per tool call: measured with `/lean profile` on a normal laptop, **23ms end to end, of which 8ms is the Ruby interpreter starting and around 1ms is the work.** It is paid on every call whether or not anything is rewritten.
 
-It was 71ms until the hook stopped launching with RubyGems. `ruby -e ""` costs 45ms on that machine and `ruby --disable=gems -e ""` costs 8ms, and everything this plugin requires is a default gem, so the output is byte-identical — with a fallback that brings RubyGems back if some install has replaced one of them, because a LoadError in the hook would take the whole thing down. Against a result carried for hundreds of turns that is a good trade, and it is now a number you can check rather than an assumption — set `LEAN_OUTPUT_PROFILE=1` and run `/lean profile`.
+It was **71ms** three changes ago, and all three were the same mistake in different places — paying on every tool call for something only some other command needed.
+
+| | |
+|---|---|
+| launching with RubyGems | 45ms of interpreter startup against 8ms without it |
+| `fileutils`, for `mkdir_p` | 6.9ms, replaced by four lines that do the same thing |
+| `tmpdir`, which pulls `fileutils` back in | required by the corpus replay, which the hook never runs |
+
+Everything the hook requires is a default gem, so dropping RubyGems leaves the output byte-identical — checked by md5 on a real compressing payload — with a fallback that brings RubyGems back if some install has replaced one of them, because a LoadError in the hook would take the whole thing down. Against a result carried for hundreds of turns that is a good trade, and it is now a number you can check rather than an assumption — set `LEAN_OUTPUT_PROFILE=1` and run `/lean profile`.
 
 ### The floor is measured, and `/lean calibrate` is how it stays that way
 

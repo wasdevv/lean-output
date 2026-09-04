@@ -2,7 +2,6 @@
 
 require 'json'
 require 'digest'
-require 'fileutils'
 
 module LeanOutput
   # How hard to compress, resolved fresh on every hook invocation.
@@ -224,7 +223,7 @@ module LeanOutput
     def self.write(cwd, level)
       normalized = normalize(level) or return nil
       path = flag_path(cwd)
-      FileUtils.mkdir_p(File.dirname(path))
+      Session.mkdir_p(File.dirname(path))
       File.write(path, normalized)
       normalized
     rescue StandardError

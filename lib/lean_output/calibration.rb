@@ -2,7 +2,6 @@
 
 require 'digest'
 require 'json'
-require 'time'
 
 module LeanOutput
   # The measured floor, written down where the hook can read it.

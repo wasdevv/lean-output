@@ -35,9 +35,10 @@ and deciding without quoting counts as unreferenced, so a high number is a
 question about the agent's habits, not a verdict.
 
 `profile` reports what the hook itself costs, which nothing here had ever
-measured — set `LEAN_OUTPUT_PROFILE=1` first. Measured on this machine: 31ms per
-tool call end to end, of which about 26ms is loading the library and 1ms is the
-work — it was 71ms until the hook stopped launching with RubyGems. It is paid on every call whether or not anything is rewritten.
+measured — set `LEAN_OUTPUT_PROFILE=1` first. Measured on this machine: 23ms per
+tool call end to end, of which 8ms is the interpreter starting and 1ms is the
+work — it was 71ms before the hook stopped loading RubyGems, `fileutils` and
+`tmpdir` that only other commands needed. It is paid on every call whether or not anything is rewritten.
 
 `why <file> [command]` says which gate declined a result — no compressor
 recognised it, it was under the floor, or the rewrite did not save enough —

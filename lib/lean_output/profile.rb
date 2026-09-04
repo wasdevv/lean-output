@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require 'fileutils'
 
 module LeanOutput
   # What the hook costs, which nothing here has ever measured.
@@ -27,7 +26,7 @@ module LeanOutput
     def self.record(seconds)
       return unless on?
 
-      FileUtils.mkdir_p(File.dirname(path))
+      Session.mkdir_p(File.dirname(path))
       File.write(path, "#{(seconds * 1000).round(2)}\n", mode: 'a')
       trim
     rescue StandardError

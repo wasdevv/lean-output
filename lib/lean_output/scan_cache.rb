@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require 'json'
-require 'fileutils'
 
 module LeanOutput
   # Per-transcript memo for the two commands that read every transcript.
@@ -52,7 +51,7 @@ module LeanOutput
     def self.write(kind, file, stamp, value)
       return unless stamp
 
-      FileUtils.mkdir_p(dir)
+      Session.mkdir_p(dir)
       File.write(path(kind, file), JSON.generate({ 'stamp' => stamp, 'rows' => value }))
     rescue StandardError
       nil
@@ -71,7 +70,7 @@ module LeanOutput
     # The cache is derived, so throwing it away is always safe and is the first
     # thing to try when a number looks wrong.
     def self.clear
-      FileUtils.rm_rf(dir)
+            FileUtils.rm_rf(dir)
       true
     rescue StandardError
       false

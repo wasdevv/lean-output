@@ -50,57 +50,82 @@ module LeanOutput
       previous = session.lookup(digest(output)) or return nil
       distance = session.bytes - previous[:bytes].to_i
       return nil if distance > window
-      return nil unless recoverable?(previous, output)
+
+      kind = delivery(previous, output) or return nil
       # The entry was written after its own call advanced the counter, and this
       # call has not advanced it yet, so the immediately preceding call sits at a
       # difference of zero. +1 makes the reference say "1 tool call back".
       calls = session.seq - previous[:seq].to_i + 1
-      "#{marker(previous, calls, output)}\n#{head(output)}"
+      text = marker(previous, calls, output, kind)
+      # The head exists so a pointer whose target fell out of the window is
+      # still recognisable. A summary reference does not point at these raw
+      # bytes — the model never had them — so quoting two lines of them would
+      # spend bytes showing it something new.
+      text = "#{text}\n#{head(output)}" unless kind == :summary
+      return nil if kind == :summary && text.bytesize >= previous[:size].to_i
+
+      text
     end
 
-    # A reference is only ever worth making if the thing it points back at is
-    # still reachable. There are exactly two ways it can be, and this is the
-    # whole rule:
+    # What the earlier occurrence actually put in front of the model. There are
+    # three answers, not two, and the third is the one this rung used to get
+    # wrong by not having a name for it:
     #
-    #   - the earlier occurrence reached the model verbatim, so the bytes are in
-    #     the window and "withheld" is true;
-    #   - or it did not, and a file holds what the model did not get.
+    #   :verbatim — the bytes reached the model whole, so they are in the
+    #     window and "withheld" is a true claim about them;
+    #   :spilled  — they did not, and a file holds what the model did not get;
+    #   :summary  — a compressor claimed them. The model got a distillation,
+    #     nothing went to disk, and there is no raw text anywhere to withhold
+    #     or to fetch. The distillation itself is still in the window though,
+    #     and pointing at *that* is both true and cheaper than making it again.
     #
-    # Anything else is a pointer into nothing. A compressed result that fit
-    # under the ceiling is the common case — the model got a distilled summary,
-    # nothing went to disk, and the old wording still claimed the raw lines were
-    # "withheld". Declining sends it back down the ladder, where the same
-    # compressor claims it again and the model gets the same distilled failures
-    # a second time: measured on rspec_failures.txt, 966B against the 135B the
-    # reference would have cost. That 831B is the whole price of the fix, and it
-    # is the same at every level — the vault never takes these, because a
-    # compressor claimed them.
+    # `nil` is a pointer into nothing: the one case is a path the vault has
+    # since evicted. The file check belongs here because a path is the one
+    # pointer that can outlive what it names — the vault drops whole session
+    # directories past SESSIONS and whole files past KEEP, and neither touches
+    # the `seen` entry quoting the path, while a repeat refreshes that entry's
+    # recency without writing a file.
     #
-    # The file check belongs here too, because a path is the one pointer that
-    # can outlive what it names: the vault evicts whole session directories past
-    # SESSIONS and whole files past KEEP, and neither touches the `seen` entry
-    # quoting the path — while a repeat refreshes that entry's recency without
-    # writing a file.
-    def self.recoverable?(previous, output)
-      return File.exist?(previous[:path]) if previous[:path]
+    # :summary used to return nil with the others, which sent the result back
+    # down the ladder for the same compressor to claim it again and deliver the
+    # same distilled failures a second time: measured on rspec_failures.txt,
+    # 966B against the ~180B the reference costs. That difference is paid on
+    # every repeated test run, at every level — the vault never takes these,
+    # because a compressor claimed them.
+    def self.delivery(previous, output)
+      return File.exist?(previous[:path]) ? :spilled : nil if previous[:path]
+      return :verbatim if previous[:size].to_i >= output.bytesize
 
-      previous[:size].to_i >= output.bytesize
+      :summary
     end
-    private_class_method :recoverable?
+    private_class_method :delivery
 
-    # Reached only when `recoverable?` said yes, so both arms are true claims.
-    def self.marker(previous, calls, output)
-      head = "[lean-output] byte-identical to #{previous[:label]} from #{plural(calls)} back — " \
-             "#{Text.human(output.bytesize)}, #{output.lines.size} lines"
-      return "#{head} withheld" unless previous[:path]
-
-      # Worded like the vault's own notice and no longer: this is paid on every
-      # repeat of a spilled result, and the two extra facts a longer sentence
-      # would add — that the earlier one was a pointer too, and why — change
-      # nothing about what the reader does next.
-      "#{head}, full text at #{previous[:path]} (Read or grep it)"
+    # Reached only when `delivery` named a state, so every arm is a true claim.
+    # The :summary arm is the one that has to watch its words: nothing was
+    # withheld that a reader could go and get, so it says what is actually the
+    # case — the shorter text the model was given is above, and this is not it
+    # a second time.
+    def self.marker(previous, calls, output, kind)
+      head = "[lean-output] byte-identical to #{previous[:label]} from #{plural(calls)} back"
+      case kind
+      when :summary
+        "#{head} — its #{Text.human(previous[:size].to_i)} summary is already above, not repeated"
+      when :verbatim
+        "#{head} — #{sizes(output)} withheld"
+      else
+        # Worded like the vault's own notice and no longer: this is paid on
+        # every repeat of a spilled result, and the two extra facts a longer
+        # sentence would add — that the earlier one was a pointer too, and why —
+        # change nothing about what the reader does next.
+        "#{head} — #{sizes(output)}, full text at #{previous[:path]} (Read or grep it)"
+      end
     end
     private_class_method :marker
+
+    def self.sizes(output)
+      "#{Text.human(output.bytesize)}, #{output.lines.size} lines"
+    end
+    private_class_method :sizes
 
     def self.plural(calls)
       calls == 1 ? '1 tool call' : "#{calls} tool calls"

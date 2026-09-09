@@ -21,28 +21,58 @@ module LeanOutput
       current = read(newest_for(cwd))
       lines = ["  this session   #{summarise(current)}"]
       lines << "  all sessions   #{summarise(total)}" if files.size > 1
-      lines << "  re-run rate    #{reruns(total)}" if rerun_sample?(total)
+      compared = strata
+      lines << "  re-run rate    #{reruns(compared)}" unless compared.empty?
       lines.join("\n")
     end
 
     # Printed as a pair or not at all. On its own, "8% of rewrites were followed
     # by the same command again" reads like a harm figure; beside the same
-    # number for the results left untouched it reads like what it is. They sat
-    # at 15.0% and 14.9% over the corpus that motivated this, which is the
-    # measurement saying the first number means nothing yet.
-    def self.reruns(gain)
-      rewrites = gain['rewrites'].to_i
-      others = gain['calls'].to_i - rewrites
-      "#{percent_of(gain['reruns'], rewrites)} after a rewrite, " \
-        "#{percent_of(gain['reruns_base'], others)} after a passthrough " \
-        "(within #{Session::WATCH_CALLS} calls)"
+    # number for the results left untouched it reads like what it is.
+    #
+    # And summed over command families that have a sample in both arms, never
+    # pooled. A pooled pair on a real corpus reads 53.2% against 30.4% and every
+    # one of those twenty-three points is the rewritten arm being test runners.
+    # The family count is printed because it is the sample size that matters
+    # here: two families compared is not a measurement, and a reader who cannot
+    # see how many were compared cannot tell.
+    def self.reruns(strata)
+      rewrites = strata.sum { |cell| cell[0].to_i }
+      others = strata.sum { |cell| cell[2].to_i }
+      "#{percent_of(strata.sum { |cell| cell[1].to_i }, rewrites)} after a rewrite, " \
+        "#{percent_of(strata.sum { |cell| cell[3].to_i }, others)} after a passthrough " \
+        "(within #{Session::WATCH_CALLS} calls, across #{plural(strata.size)})"
     end
     private_class_method :reruns
 
-    def self.rerun_sample?(gain)
-      gain['rewrites'].to_i.positive? && (gain['calls'].to_i - gain['rewrites'].to_i).positive?
+    def self.plural(count)
+      count == 1 ? '1 command family' : "#{count} command families"
     end
-    private_class_method :rerun_sample?
+    private_class_method :plural
+
+    # Cells are merged across sessions before the both-arms test, not after: a
+    # family rewritten in one session and passed through in another is a
+    # comparison the pair of sessions can make and neither can alone.
+    def self.strata
+      merged = Hash.new { |hash, key| hash[key] = Array.new(Session::CELL, 0) }
+      files.each do |file|
+        meter(file).each do |family, cell|
+          next unless cell.is_a?(Array) && cell.size == Session::CELL
+
+          Session::CELL.times { |i| merged[family][i] += cell[i].to_i }
+        end
+      end
+      merged.values.select { |cell| cell[0].positive? && cell[2].positive? }
+    end
+    private_class_method :strata
+
+    def self.meter(file)
+      parsed = JSON.parse(File.read(file))
+      parsed.is_a?(Hash) && parsed['meter'].is_a?(Hash) ? parsed['meter'] : {}
+    rescue StandardError
+      {}
+    end
+    private_class_method :meter
 
     def self.percent_of(count, total)
       total.zero? ? 'n/a' : "#{(100.0 * count.to_i / total).round(1)}%"

@@ -20,7 +20,7 @@ module LeanOutput
   # directory, a version bump — all of them recompute, which is the answer the
   # caller wanted anyway, only slower.
   module ScanCache
-    VERSION = 1
+    VERSION = 4
 
     def self.fetch(kind, file)
       stamp = signature(file)

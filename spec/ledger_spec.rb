@@ -107,30 +107,68 @@ RSpec.describe LeanOutput::Ledger do
     end
   end
 
-  # The half of the invariant the vault fix missed. A compressor claims the
-  # result, it fits under the ceiling, so nothing reaches the vault and nothing
-  # reaches disk — and the model holds a distilled summary, not the raw lines.
-  # Saying "100 lines withheld" there is the same lie the vault case made, minus
-  # even the file to recover from, and it is the common case: this is the path
-  # `full`, the shipped default, takes on every repeated test run.
+  # A compressor claims the result, it fits under the ceiling, so nothing
+  # reaches the vault and nothing reaches disk — the model holds a distilled
+  # summary, not the raw lines. Saying "100 lines withheld" there is a lie with
+  # no file behind it; sending the same summary again is honest and costs the
+  # whole summary. The third state is neither: the summary is in the window,
+  # and a pointer at it is both true and small.
   describe 'a repeat of something the model only ever saw compressed' do
     let(:failures) { fixture('rspec_failures.txt') }
 
-    def rspec_run
+    def rspec_run(session = 'compressed-repeat')
       LeanOutput::Runner.call(
-        'tool_name' => 'Bash', 'session_id' => 'compressed-repeat',
+        'tool_name' => 'Bash', 'session_id' => session,
         'tool_input' => { 'command' => 'bundle exec rspec' },
         'tool_response' => { 'stdout' => failures, 'stderr' => '' }
       )&.dig('hookSpecificOutput', 'updatedToolOutput', 'stdout')
     end
 
-    it 'delivers the summary again rather than claiming the lines are withheld' do
+    it 'points at the summary the model already has instead of making it again' do
       first = rspec_run
       second = rspec_run
 
+      expect(second).to include('byte-identical to `bundle exec rspec`')
+      expect(second).to include('summary is already above')
+      expect(second.bytesize).to be < first.bytesize
+    end
+
+    # The two claims it must not make: nothing was withheld that anyone can go
+    # and get, and there is no file to send them to.
+    it 'claims neither withheld lines nor a file that was never written' do
+      rspec_run
+      second = rspec_run
+
       expect(second).not_to include('withheld')
-      expect(second).to include('rspec ./')
-      expect(second.bytesize).to eq(first.bytesize)
+      expect(second).not_to include('full text at')
+    end
+
+    it 'keeps pointing at the summary rather than alternating with it' do
+      rspec_run
+      sizes = Array.new(3) { rspec_run.bytesize }
+
+      expect(sizes.uniq.size).to eq(1)
+    end
+
+    it 'still recompresses when one byte moved' do
+      rspec_run
+      changed = LeanOutput::Runner.call(
+        'tool_name' => 'Bash', 'session_id' => 'compressed-repeat',
+        'tool_input' => { 'command' => 'bundle exec rspec' },
+        'tool_response' => { 'stdout' => "#{failures} ", 'stderr' => '' }
+      )&.dig('hookSpecificOutput', 'updatedToolOutput', 'stdout')
+
+      expect(changed).to include('rspec ./')
+      expect(changed).not_to include('byte-identical')
+    end
+
+    # The reference competes with the summary, not with the raw output — so a
+    # summary already shorter than the pointer that would replace it stays.
+    it 'refuses the reference when the summary it replaces is smaller' do
+      previous = { label: '`bundle exec rspec`', size: 40, seq: 1, bytes: 0, path: nil }
+      session = instance_double(LeanOutput::Session, lookup: previous, bytes: 100, seq: 2)
+
+      expect(described_class.reference(session, failures)).to be_nil
     end
 
     # The saving is real, so declining has to stay narrow: a result that reached

@@ -20,7 +20,8 @@ module LeanOutput
   module Corpus
     DEFAULT_ROOT = '~/.claude/projects'
 
-    Result = Struct.new(:tool, :command, :bytes, :saved, :claimed, :shape, keyword_init: true)
+    Result = Struct.new(:tool, :command, :bytes, :saved, :claimed, :shape, :structure, :packed,
+                        :input, :trimmed, keyword_init: true)
 
     # Tools this plugin has no compressor for, recognised by what they print.
     #
@@ -171,8 +172,129 @@ module LeanOutput
        *ranked.map { |name, group| row(name, group) },
        '',
        summary(groups.values.sum { |group| group[:bytes] }, results),
+       *surface(results),
+       *trimming(results),
+       *bands(results),
        *missing(results)].join("\n")
     end
+
+    # A command that trims its own output before the hook ever sees it. Rough on
+    # purpose and it only ever writes a line in a report — the same licence the
+    # UNSUPPORTED patterns get, and for the same reason.
+    SELF_TRIMMED = /\|\s*(head|tail|wc|cut|awk|sed -n|grep|jq|sort|uniq|column)\b|\bhead -|\btail -|--quiet|\s-q\b/
+
+    # Why the saving is what it is, which no other line here explains.
+    #
+    # A compressor is built for `bundle exec rspec` dumping 4.6 kB into the
+    # context. It never sees that when the agent writes `bundle exec rspec 2>&1
+    # | tail -40` — what arrives is 500 bytes of tail, already distilled, and
+    # already missing the head where rspec puts the failure descriptions. The
+    # rung did not fail; it was handed a fragment.
+    #
+    # Measured over 90 days of one machine: 75% of Bash calls arrive self-
+    # trimmed, carrying 65% of the bytes at a 563B median against 949B for the
+    # rest. That is the single biggest reason a real corpus reports a fraction
+    # of the bench, and until this line existed the report gave no way to tell
+    # "the compressors have nothing left" from "the compressors never got a
+    # look".
+    def self.trimming(results)
+      trimmed = results.select(&:trimmed)
+      return [] if trimmed.empty?
+
+      bytes = results.sum(&:bytes)
+      ['', format('%d%% of these commands trimmed their own output before the hook saw it ' \
+                  '(| head, | tail, -q): %d of %d calls, %d%% of the bytes. A compressor handed ' \
+                  'a tail cannot do better than the tail.',
+                  (100.0 * trimmed.size / results.size).round, trimmed.size, results.size,
+                  bytes.zero? ? 0 : (100.0 * trimmed.sum(&:bytes) / bytes).round)]
+    end
+    private_class_method :trimming
+
+    # The denominator, which this report has never printed and which makes -3%
+    # read as a failure rather than as a share.
+    #
+    # A tool call is an assistant message: the command, the file content a Write
+    # carries, the strings an Edit replaces. It is in the context for the rest
+    # of the session on exactly the same terms as the result, and **no hook
+    # rewrites it** — PostToolUse arrives after it was sent, and nothing else
+    # here runs earlier. So it is not a rung this plugin is missing, it is the
+    # half of the surface that is out of reach, and a saving quoted against the
+    # other half alone is quoted against a number the reader will assume is the
+    # whole thing.
+    def self.surface(results)
+      calls = results.sum { |result| result.input.to_i }
+      return [] if calls.zero?
+
+      output = results.sum(&:bytes)
+      ['', format('%.2fMB of this is tool output, the half a hook can rewrite. The tool *calls* that ' \
+                  'produced it are %.2fMB (%d%% of the two) and no hook reaches them — they are ' \
+                  'assistant messages, already sent.', mb(output), mb(calls),
+                  (100.0 * calls / (calls + output)).round)]
+    end
+    private_class_method :surface
+
+    # Where the leftover bytes sit relative to the rungs that could reach them,
+    # which is the question the ranking above cannot answer. A row at the top
+    # with 2MB unclaimed means "write a compressor" only if those bytes are in
+    # the middle band; below the floor nothing looks at them, and above the
+    # spill the vault already offers to take them and was declined for reasons
+    # the vault sweep has already priced.
+    #
+    # The bounds come from the policy rather than from constants repeated here,
+    # and the comparisons match the runtime's exactly — `deduplicable?` is
+    # `>= min_bytes` and `Vault.spill` is `> spill` — so the report cannot
+    # promise a reach the ladder does not have.
+    def self.bands(results)
+      policy = Mode.policy(Mode.resolve) or return []
+      floor = policy[:min_bytes].to_i
+      spill = policy[:spill]
+      rows = [["under #{Text.human(floor)}", results.select { |result| result.bytes < floor }],
+              [band_label(floor, spill),
+               results.select { |result| result.bytes >= floor && !above?(result, spill) }]]
+      # No spill key means no vault at this level, and a band nothing can reach
+      # is a row with nothing to say.
+      rows << ["over #{Text.human(spill)}", results.select { |result| above?(result, spill) }] if spill
+      left = results.sum { |result| result.bytes - result.saved }
+
+      ['', 'bytes still on the table, by which rung can reach them:',
+       *rows.map { |name, list| band_row(name, list, left) },
+       *ceiling(results)]
+    end
+    private_class_method :bands
+
+    # The line that stops the ranking from reading as a roadmap. A band holding
+    # most of the residue is only an opportunity if the bytes in it have
+    # something a compressor could take, and until now nothing here said whether
+    # they did — which is an afternoon of hand-written probes every time the
+    # question comes up.
+    def self.ceiling(results)
+      bytes = results.sum(&:bytes)
+      return [] if bytes.zero?
+
+      ['  structure is repeated lines and shared prefixes — the only thing a readable rewrite banks.',
+       format('  deflate takes -%d%% of the same bytes: the ceiling, and not a collectable one, ' \
+              'since its output is not text.', 100 - (100.0 * results.sum { |r| r.packed.to_i } / bytes).round)]
+    end
+    private_class_method :ceiling
+
+    def self.above?(result, spill)
+      spill ? result.bytes > spill : false
+    end
+    private_class_method :above?
+
+    def self.band_label(floor, spill)
+      spill ? "#{Text.human(floor)}–#{Text.human(spill)}" : "over #{Text.human(floor)}"
+    end
+    private_class_method :band_label
+
+    def self.band_row(name, list, left)
+      remaining = list.sum { |result| result.bytes - result.saved }
+      bytes = list.sum(&:bytes)
+      format('  %-14s %6d calls  %8.2fMB left  %3d%% of the residue  %3d%% structure', name, list.size,
+             mb(remaining), left.zero? ? 0 : (100.0 * remaining / left).round,
+             bytes.zero? ? 0 : (100.0 * list.sum { |result| result.structure.to_i } / bytes).round)
+    end
+    private_class_method :band_row
 
     # Not a ranking, a shopping list: the tools whose output went past whole
     # because nothing here knows how to read it. Silent when the roster already
@@ -234,13 +356,67 @@ module LeanOutput
 
       updated = Runner.call(payload)&.dig('hookSpecificOutput', 'updatedToolOutput')
       after = updated ? Runner.extract_output(updated).to_s.bytesize : output.bytesize
+      structure, packed = redundancy(output)
       Result.new(
         tool: payload['tool_name'], command: label(payload), bytes: output.bytesize,
         saved: output.bytesize - after, claimed: !updated.nil?,
-        shape: updated ? nil : shape_of(output)
+        shape: updated ? nil : shape_of(output), structure: structure, packed: packed,
+        input: JSON.generate(payload['tool_input'] || {}).bytesize,
+        trimmed: payload.dig('tool_input', 'command').to_s.match?(SELF_TRIMMED)
       )
     end
     private_class_method :replay
+
+    # Whether there is anything in these bytes for a compressor to take, in two
+    # numbers that answer different halves of the question.
+    #
+    # `structure` is bytes sitting in whole lines that repeat, or in a leading
+    # run that at least three lines share. Those are the two shapes a rewrite
+    # which has to stay readable can actually bank — the grep compressor banks
+    # the second one for one kind of prefix, and every generic scheme anyone
+    # would write next banks one or the other.
+    #
+    # `packed` is deflate on the same bytes. It is a ceiling and not a
+    # collectable one: its output is not text a model can read. But it is a hard
+    # ceiling, and the useful direction is the negative one — where deflate
+    # finds nothing, nothing that stays readable will either, and the ranking
+    # above is pointing at bytes that are simply irreducible.
+    #
+    # Both are measured on the bytes as they arrived, which is what a compressor
+    # would be handed. On a corpus where the roster already claims a lot the two
+    # will read high for work that is already done; the `saved` column is what
+    # says whether that happened.
+    def self.redundancy(output)
+      # Loaded here and not at the top: this file is required by the hook, which
+      # runs on every tool call and never replays anything.
+      require 'zlib'
+      repeated = 0
+      once = []
+      seen = Hash.new(0)
+      output.lines.each do |line|
+        key = line.strip
+        next if key.size < 5
+
+        seen[key] += 1
+        seen[key] > 1 ? repeated += line.bytesize : once << line
+      end
+      [repeated + prefix_bytes(once), Zlib::Deflate.deflate(output).bytesize]
+    end
+
+    # A leading run up to the first separator, which is the shape a header can
+    # factor out. Everything past the first occurrence is the saving.
+    PREFIX_HEAD = /\A[^\s:|,]{4,}[\s:|,]/
+
+    def self.prefix_bytes(lines)
+      groups = Hash.new(0)
+      lines.each do |line|
+        head = line[PREFIX_HEAD] or next
+
+        groups[head] += 1
+      end
+      groups.sum { |head, count| count >= 3 ? (count - 1) * head.bytesize : 0 }
+    end
+    private_class_method :prefix_bytes
 
     # Group by the shape of the command rather than the command, so 588 greps
     # for different strings answer as one line. `git diff` and `git status` stay
@@ -253,26 +429,72 @@ module LeanOutput
     # that reads as unclaimable. An inline assignment does the same, and ranks
     # under `BUNDLE_LOCKFILE`. This only ever moved the ranking: what the hook
     # claims is decided by `Detector`, which reads the output.
-    PREFIX = [/\A(cd|export|source)\s+\S+\s*(&&|;)\s*/m,   # a directory, then the real command
-              /\A\w+=\S*\s+/m,                             # FOO=bar cmd
-              /\A(env|timeout)\s+(-\S+\s+|\S+=\S*\s+|\d+\s+)*/m].freeze
+    # A newline separates a prefix from its command as surely as `&&` does, and
+    # it is how the setup is most often written: `cd /repo` on its own line put
+    # 371 calls of a real corpus under a bucket called `cd`.
+    PREFIX = [/\A(cd|export|source)\s+\S+[ \t]*(&&|;|\n)\s*/,  # a directory, then the real command
+              /\A\w+=\S*\s+/,                             # FOO=bar cmd
+              # `[A-Z_]+` because `env -u NAME` takes a *value*, and the peel
+              # stopped dead on it: `env -u BUNDLE_LOCKFILE BUNDLE_GEMFILE=…
+              # bundle exec rspec` ranked 289 calls under a bucket named
+              # `BUNDLE_LOCKFILE`. Matching the variable name rather than
+              # "whatever follows a flag" is the safe half of that: `env -i
+              # bundle exec rspec` must keep its command, and a real command is
+              # never a bare all-caps word.
+              /\A(env|timeout)\s+(-\S+\s+|\S+=\S*\s+|[A-Z_][A-Z0-9_]*\s+|\d+\s+)*/].freeze
+
+    # Runners whose *second* word names the family. `npm test` and `npm install`
+    # print nothing alike and want different compressors, so collapsing them
+    # into one `npm` row hides both. The list grew because the ranking is what
+    # decides where the next compressor goes, and it was answering `pytest`,
+    # `go` and `mix` under a launcher.
+    RUNNERS = %w[bundle bin npm npx pnpm yarn cargo ruby rake git gh rails
+                 python python3 poetry uv pip pip3 go mix docker kubectl make
+                 dotnet composer php artisan node deno mvn gradle].freeze
+
+    # Redirection, pipes and heredoc openers are syntax, not arguments — and a
+    # heredoc is why the first line is all this reads: `python3 - <<'PY'` used
+    # to label itself with a word from the Python body.
+    SYNTAX = /\A[-<>|&;$(){}]/
 
     def self.label(payload)
       return payload['tool_name'].to_s unless payload['tool_name'] == 'Bash'
 
-      command = strip_prefix(payload.dig('tool_input', 'command').to_s.strip)
-      words = command.split(/\s+/).reject { |word| word.start_with?('-') }
+      command = payload.dig('tool_input', 'command').to_s.strip
+      # Strip first, then take the line. The other order cannot see a `cd` that
+      # sits on its own line, and taking the line matters after the strip
+      # anyway: a heredoc body is not arguments.
+      line = strip_prefix(command).lines.first.to_s.strip
+      words = line.split(/\s+/).reject { |word| word.match?(SYNTAX) }
+      # A command that is nothing but setup strips to nothing, and a blank row
+      # is worse than a row called `cd`.
+      words = command.lines.first.to_s.split(/\s+/) if words.empty?
       head = words.first.to_s.split('/').last
-      %w[bundle bin npm cargo ruby git gh rails python3].include?(head) ? words.take(2).join(' ') : head
+      return head unless RUNNERS.include?(head)
+
+      # The *first word that looks like a subcommand*, not the second word.
+      # A flag's value survives the syntax filter and lands in the family slot:
+      # `git -C /home/was/projetos/swarm status` ranked under a bucket called
+      # `git /home/was/projetos/swarm`, and `ruby -e '...'` put 108 calls under
+      # `ruby '`. Both name one invocation rather than a family.
+      sub = words.drop(1).find { |word| word.match?(SUBCOMMAND) }
+      sub ? "#{words.first} #{sub}" : head
     end
 
+    SUBCOMMAND = /\A[a-z][\w:.-]*\z/
+
     # Repeatedly, because the prefixes stack: `cd X; FOO=1 timeout 60 rspec`.
+    # Bounded rather than "until it stops changing": a label is worth a fixed
+    # number of passes and never worth a hang on a pathological command.
+    MAX_PREFIXES = 4
+
     def self.strip_prefix(command)
-      loop do
+      MAX_PREFIXES.times do
         before = command
         PREFIX.each { |pattern| command = command.sub(pattern, '') }
         return command if command == before
       end
+      command
     end
     private_class_method :strip_prefix
 

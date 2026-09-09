@@ -129,6 +129,34 @@ RSpec.describe 'the replacement mirrors the tool response shape' do
     expect(compress(payload)).to be_nil
   end
 
+  # `extract_output` reads a stderr-only hash and `reshape_hash` cannot put text
+  # back into one, so the host keeps the original — which the books have to
+  # agree with. Recording the summary as delivered would leave the next
+  # occurrence pointing at text the model was never shown.
+  describe 'a rewrite the host will not accept' do
+    def stderr_only(session)
+      LeanOutput::Runner.call('tool_name' => 'Bash', 'session_id' => session,
+                              'tool_input' => { 'command' => 'bundle exec rspec' },
+                              'tool_response' => { 'stderr' => fixture('rspec_failures.txt') })
+    end
+
+    it 'passes the result through untouched' do
+      expect(stderr_only('shape-books')).to be_nil
+    end
+
+    it 'books it as the passthrough it became, not as the summary nobody saw' do
+      stderr_only('shape-books')
+      repeat = LeanOutput::Runner.call('tool_name' => 'Bash', 'session_id' => 'shape-books',
+                                       'tool_input' => { 'command' => 'bundle exec rspec' },
+                                       'tool_response' => { 'stdout' => fixture('rspec_failures.txt'),
+                                                            'stderr' => '' })
+      text = repeat.dig('hookSpecificOutput', 'updatedToolOutput', 'stdout')
+
+      expect(text).to include('lines withheld')
+      expect(text).not_to include('summary is already above')
+    end
+  end
+
   it 'never touches an image result' do
     payload = bash_payload(grep_hits)
     payload['tool_response']['isImage'] = true

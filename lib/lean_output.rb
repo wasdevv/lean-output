@@ -29,7 +29,7 @@ require_relative 'lean_output/usage'
 require_relative 'lean_output/calibration'
 
 module LeanOutput
-  VERSION = '1.8.0'
+  VERSION = '1.9.0'
 
   # Entry point for callers outside the Claude Code hook: agent orchestrators
   # injecting tool output into a prompt, CI scripts, log processors.
@@ -73,8 +73,12 @@ module LeanOutput
     session = Session.load({ 'session_id' => "lib-#{name}" })
     session.advance(original.bytesize)
     session.credit(original.bytesize, result.bytesize)
-    session.observe(command.to_s.empty? ? 'library call' : "`#{command}`",
-                    rewritten: !result.equal?(original) && result != original)
+    # Same two keys the hook passes: the exact call is what a re-run matches,
+    # the family is what the meter controls for.
+    label = command.to_s.empty? ? 'library call' : "`#{command}`"
+    family = command.to_s.empty? ? 'library call' : Corpus.label('tool_name' => 'Bash',
+                                                                 'tool_input' => { 'command' => command })
+    session.observe(label, family, rewritten: !result.equal?(original) && result != original)
     session.save
   rescue StandardError
     nil

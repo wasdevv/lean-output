@@ -194,6 +194,26 @@ RSpec.describe 'bin/compress' do
       expect(updated).to include('1 tool call back')
     end
 
+    # Across processes, which is where it counts: the summary the first run
+    # delivered is only knowable from the session file on disk.
+    it 'points a repeated suite at the summary it already delivered' do
+      payload = payload_for('bundle exec rspec', fixture('rspec_failures.txt'))
+      first = updated_text(JSON.parse(run_hook(payload).first))
+      second = updated_text(JSON.parse(run_hook(payload).first))
+
+      expect(first).to include('106 examples, 3 failures')
+      expect(second).to include('summary is already above')
+      expect(second.bytesize).to be < first.bytesize
+    end
+
+    it 'holds that reference across a chain of repeats rather than alternating' do
+      payload = payload_for('bundle exec rspec', fixture('rspec_failures.txt'))
+      run_hook(payload)
+      sizes = Array.new(3) { updated_text(JSON.parse(run_hook(payload).first)).bytesize }
+
+      expect(sizes.uniq.size).to eq(1)
+    end
+
     it 'resends a Read whose content changed by a single byte' do
       run_hook(read_payload('lib/lean_output.rb', fixture('rspec_failures.txt')))
       stdout, _, status = run_hook(read_payload('lib/lean_output.rb', "#{fixture('rspec_failures.txt')} "))

@@ -28,6 +28,24 @@ module LeanOutput
     # Entries are pruned to the most recent N. The window in Ledger already
     # decides what is too old to reference; this is only so the file cannot grow
     # without bound in a session that runs for hours.
+    #
+    # Which left the obvious question unasked for eight versions: does the count
+    # bind *before* the window does? The two are measured in different units — a
+    # count of entries against 250kB of traffic gone by — so nothing guaranteed
+    # they agree, and a cap that bit first would be silently throwing away hits
+    # the ledger had already decided were fair game.
+    #
+    # It does not. Replaying every transcript on this machine against an
+    # unbounded ledger, the deepest LRU position a hit was ever found at is
+    # **151**, with p50 at 101 and p99 at 122. 300 is a shade over twice the
+    # worst case, which is the headroom Sleator-Tarjan says an LRU cache wants:
+    # LRU_M ≤ 2·OPT_{M/2}, so a cache at twice the observed reuse depth is
+    # within a constant factor of knowing the future.
+    #
+    # The policy is LRU and not FIFO, which matters and is easy to miss: `prune`
+    # sorts on the entry's `seq`, and `remember` rewrites `seq` on every repeat,
+    # so a digest that keeps coming back keeps its place. FIFO here would evict
+    # exactly the entries earning their keep.
     MAX_SEEN = 300
 
     attr_reader :id, :data
@@ -124,12 +142,17 @@ module LeanOutput
 
     def self.blank
       { 'v' => VERSION, 'seq' => 0, 'bytes' => 0, 'seen' => {}, 'watch' => [],
-        'said' => {}, 'gain' => gain_blank }
+        'said' => {}, 'gain' => gain_blank, 'meter' => {} }
     end
 
+    # `reruns` and `reruns_base` used to live here as two pooled totals. They
+    # are gone, not moved: pooling them is what made them unreadable, and the
+    # per-family cells in `meter` carry the same events with the confounder
+    # kept. A file written before this release simply has two keys nothing
+    # reads, which is why this needed no VERSION bump — that would have thrown
+    # away every user's ledger to change a measurement.
     def self.gain_blank
-      { 'calls' => 0, 'before' => 0, 'after' => 0, 'hits' => 0, 'hit_bytes' => 0,
-        'rewrites' => 0, 'reruns' => 0, 'reruns_base' => 0 }
+      { 'calls' => 0, 'before' => 0, 'after' => 0, 'hits' => 0, 'hit_bytes' => 0, 'rewrites' => 0 }
     end
 
     def initialize(id, data)
@@ -228,33 +251,90 @@ module LeanOutput
     # way a hook can see: it asked for the same thing again, straight away.
     #
     # Both arms are counted, and that is the entire design. Re-running a command
-    # within three calls is background behaviour — over 8680 real results it
-    # happens after 15.0% of the results this plugin would rewrite and after
-    # 14.9% of the ones it leaves alone. A detector watching only the first
-    # number would have found 89 "misses" in a corpus where the plugin was
+    # within three calls is background behaviour — a detector watching only the
+    # rewritten arm would find "misses" in a corpus where the plugin was
     # provably inert and could not have caused one.
     #
-    # So this records a rate against its own control and stops. Demoting a
-    # compressor on the strength of a signal with no measured lift would be
-    # acting confidently on noise, which is the failure this file exists to
-    # avoid, not commit. The threshold gets written when the two arms separate.
+    # **The arms are compared inside a command family, never pooled.** That is
+    # the correction this meter needed and it is not a refinement, it is the
+    # difference between a number and a false alarm. Pooled over a real corpus
+    # the two arms read 53.2% after a compressed result against 30.4% after a
+    # passthrough — twenty-three points, which would condemn every compressor
+    # here. All twenty-three are confounding: the rewritten arm is test and lint
+    # runners, and an edit-test loop re-runs those for reasons no plugin
+    # touches. Stratified so each family is its own control, over 35 families
+    # seen in both arms: **40.5% against 41.2%, z = -0.49.**
     #
-    # They still have not. Read back off 32 real sessions and 4039 tool calls:
-    # 18.9% after a rewrite against 20.7% after a passthrough — z ≈ 1.4, and the
-    # point estimate leans the reassuring way, with the model re-running *less*
-    # after a rewrite than after being left alone. Two independent corpora now
-    # say the same thing, which is the answer this detector was built to get.
+    # So a cell is per family, and the report sums only families that have a
+    # sample in both arms — a family seen in one arm carries no comparison, and
+    # summing it is exactly how the confound gets back in.
+    #
+    # Two keys, deliberately, because they answer different questions. The
+    # look-back matches the *exact* label, since "the model asked for precisely
+    # what it just got" is the signal. The cell is keyed by *family*, since the
+    # thing being controlled for is what kind of command it was. Read back off
+    # three independent corpora now, the arms have never separated; the
+    # threshold gets written if they ever do, and it can now be believed.
     WATCH_CALLS = 3
 
-    def observe(label, rewritten:)
+    # Families kept. Bounded because this file is rewritten on every tool call
+    # and a Bash label is a whole command, so one-off commands would fill it
+    # forever.
+    #
+    # Pruned by sample size — LFU, where `seen` above is LRU — and the
+    # difference is deliberate rather than an oversight. LRU is the right policy
+    # for a *cache*, because the question it answers is "will this be asked for
+    # again", and Sleator-Tarjan bounds how much it can cost you. This is not a
+    # cache: nothing looks a family up, and the question is "which cells carry
+    # the estimate". There the least-frequent cell is the least informative one
+    # by definition, and evicting on recency would throw away the family with
+    # 200 observations because a one-off ran more recently.
+    MAX_METER = 40
+
+    # [rewritten, rewritten-then-repeated, passthrough, passthrough-then-repeated]
+    CELL = 4
+
+    def observe(label, family, rewritten:)
       watch = data['watch'] ||= []
       earlier = watch.find { |entry| entry[1] == label && seq - entry[0].to_i <= WATCH_CALLS }
 
-      bump(earlier[2] ? 'reruns' : 'reruns_base') if earlier
+      cell = cell_for(family)
+      cell[rewritten ? 0 : 2] += 1
+      # Attributed to the arm the *earlier* call belonged to — it is the one
+      # that may have cost the round trip. Same family by construction, since
+      # the look-back already matched its exact label.
+      cell[earlier[2] ? 1 : 3] += 1 if earlier
       bump('rewrites') if rewritten
 
       data['watch'] = (watch << [seq, label, rewritten]).last(WATCH_CALLS)
     end
+
+    # Only families with a sample in both arms. Everything downstream sums these
+    # and nothing sums the rest, which is the whole guarantee.
+    def strata
+      (data['meter'] || {}).values.select do |cell|
+        cell.is_a?(Array) && cell.size == CELL && cell[0].to_i.positive? && cell[2].to_i.positive?
+      end
+    end
+
+    def cell_for(family)
+      meter = data['meter'] ||= {}
+      cell = meter[family]
+      return cell if cell.is_a?(Array) && cell.size == CELL
+
+      prune_meter(meter)
+      meter[family] = Array.new(CELL, 0)
+    end
+    private :cell_for
+
+    def prune_meter(meter)
+      return if meter.size < MAX_METER
+
+      keep = meter.select { |_, cell| cell.is_a?(Array) && cell.size == CELL }
+                  .sort_by { |_, cell| -(cell[0].to_i + cell[2].to_i) }.first(MAX_METER - 1)
+      meter.replace(keep.to_h)
+    end
+    private :prune_meter
 
     def bump(counter)
       gain[counter] = gain[counter].to_i + 1

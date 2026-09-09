@@ -49,6 +49,20 @@ This is the only rung that reaches `Read`, which no compressor here can touch �
 
 The reference carries the head of what it withheld on purpose. The risk is not that the pointer is wrong — an identical digest cannot lie about the bytes — but that the occurrence it points at was summarised away by a context compaction, leaving the model holding a pointer into nothing. Two lines is enough to recognise the file, and cheap against the kilobytes withheld.
 
+**A pointer only ever claims what is actually there, and there are three of those.** The earlier occurrence either reached the model whole (`214 lines withheld` — the bytes are up there in the window), or it went to the vault (`full text at /home/…/vault/…` — a file holds what the model did not get), or a compressor claimed it and the model was given a summary. That third case has no raw text anywhere: nothing was withheld that a reader could go and fetch, and no file was written. It used to be answered by declining, which sent the result back down the ladder for the same compressor to distil the same failures a second time. The summary itself is in the window though, so the pointer points at that:
+
+```text
+[lean-output] byte-identical to `bundle exec rspec` from 1 tool call back — its 966B summary is already above, not repeated
+```
+
+Measured on `spec/fixtures/rspec_failures.txt` end to end through `bin/compress`: the first run delivers 966 B of distilled failures and every repeat delivers 125 B, against 4.6 kB raw. That is **841 B per repeated run of a failing suite**, paid at every level — the vault never takes these, because a compressor claimed them. No head is quoted in this one: the head would be two lines of raw output the model never saw, which costs bytes to show it something new. And the reference has to beat the summary it replaces, not the raw output behind it — a pointer that wins against 4.6 kB while losing to the 966 B it actually stands in for is a rung that costs context to save context, and `bin/bench` fails the build on it.
+
+The ledger is a cache, and it is worth naming which one: the context window is internal memory, the vault is external memory, one result is a block, and *following a pointer* is the I/O operation — which is why this plugin prices a round trip in turns rather than bytes. The [external memory model](https://en.algorithmica.org/hpc/external-memory/model/) is the frame, and it settles two things here that were previously guesses.
+
+`Session::MAX_SEEN` caps the ledger at 300 entries while the window is measured in 250 kB of traffic gone by. Two different units, nothing guaranteeing they agree, and a cap that bit first would silently discard hits the window had already allowed. Replaying every transcript on one machine against an *unbounded* ledger: **the deepest LRU position a hit was ever found at is 151, p50 at 101, p99 at 122.** 300 is a shade over twice the worst case, which is the headroom [Sleator–Tarjan](https://en.algorithmica.org/hpc/external-memory/policies/) says an LRU cache wants — `LRU_M ≤ 2·OPT_{M/2}`, so a cache at twice the observed reuse depth is within a constant factor of knowing the future. Zero hits are lost to the cap.
+
+The policy is LRU and not FIFO, which is easy to miss: `prune` sorts on the entry's `seq` and `remember` rewrites `seq` on every repeat, so a digest that keeps coming back keeps its place. FIFO would evict exactly the entries earning their keep. The re-run meter beside it is pruned by *frequency* instead, and that inversion is deliberate — it is not a cache, nothing looks a family up, and the least-frequent cell is the least informative one by definition.
+
 **How far back a reference may point is measured in tool-output bytes that have gone by, not in tool calls** — forty Reads of a 200-line file and forty `git status` runs push very different amounts of history out of the window. The default is 250 kB, roughly 60k tokens; `bin/bench` prints the sensitivity curve and `LEAN_OUTPUT_WINDOW` overrides it.
 
 ## Levels
@@ -68,6 +82,54 @@ It was **71ms** three changes ago, and all three were the same mistake in differ
 | `tmpdir`, which pulls `fileutils` back in | required by the corpus replay, which the hook never runs |
 
 Everything the hook requires is a default gem, so dropping RubyGems leaves the output byte-identical — checked by md5 on a real compressing payload — with a fallback that brings RubyGems back if some install has replaced one of them, because a LoadError in the hook would take the whole thing down. Against a result carried for hundreds of turns that is a good trade, and it is now a number you can check rather than an assumption — set `LEAN_OUTPUT_PROFILE=1` and run `/lean profile`.
+
+### `/lean analyze` says which rung could reach the leftovers
+
+The ranking answers *"which command left the most bytes behind"*, which is only half of what you need before writing a compressor: bytes below the ledger floor are not worth a rung, and bytes above the spill threshold are already offered to the vault and declined for reasons the vault sweep priced. So the report splits the residue at the two bounds that actually gate the ladder, read off the policy rather than repeated here, and with the same comparisons the runtime uses — `>= min_bytes` for the ledger, `> spill` for the vault:
+
+```text
+bytes still on the table, by which rung can reach them:
+  under 200B       1471 calls      0.14MB left    4% of the residue
+  200B–15.6kB      3358 calls      3.69MB left   96% of the residue
+  over 15.6kB         7 calls      0.01MB left    0% of the residue
+```
+
+That is a real week of this machine's transcripts: 96% of everything left sits in the band only a compressor can reach. On its own that reads as a roadmap, which is why the last two columns exist.
+
+And beside it, the reason the saving is what it is:
+
+```text
+64% of these commands trimmed their own output before the hook saw it (| head, | tail, -q):
+7654 of 11930 calls, 40% of the bytes. A compressor handed a tail cannot do better than the tail.
+```
+
+This is the line that separates *"the compressors have nothing left"* from *"the compressors never got a look"*, and until it existed there was no way to tell those apart. A compressor is built for `bundle exec rspec` dumping 4.6 kB into the context. It never sees that when the agent writes `bundle exec rspec 2>&1 | tail -40` — what arrives is 500 bytes of tail, already distilled, and already missing the head where RSpec puts the failure descriptions. Measured over 90 days of one machine, **75% of Bash calls arrive self-trimmed, carrying 65% of the Bash bytes at a 563 B median against 949 B for the rest.** That is the single biggest reason a real corpus reports a fraction of what the bench does, and it is worth reading twice: on a full run the plugin beats `| tail -40` on both axes at once — smaller *and* keeping every `file:line`.
+
+Above the bands sits the denominator this report never printed:
+
+```text
+4.02MB of this is tool output, the half a hook can rewrite. The tool *calls* that
+produced it are 4.25MB (51% of the two) and no hook reaches them — they are
+assistant messages, already sent.
+```
+
+A tool call is an assistant message: the command, the file content a `Write` carries, the strings an `Edit` replaces. It sits in the context for the rest of the session on exactly the same terms as the result, and **no hook rewrites it** — PostToolUse arrives after it was sent, and nothing here runs earlier. That is not a rung this plugin is missing, it is the half of the surface that is out of reach; counting the whole tool call surface over a week it is 6.49 MB against 4.35 MB of output, and `Bash` commands alone are 4.21 MB at a 943 B median. A saving quoted against output alone is quoted against a number a reader will assume is the whole thing.
+
+**`structure` is the share of those bytes a readable rewrite could actually bank** — bytes in whole lines that repeat, or in a leading run at least three lines share. Those are the two shapes every generic compressor takes, and the second is what the `grep` compressor already factors into a header. **`deflate` is the ceiling**, and deliberately not a collectable one: its output is not text a model can read. It earns its line in the negative direction — where deflate finds nothing, nothing that has to stay readable will either.
+
+On this corpus the answer is **3% structure against a 54% deflate ceiling**, and the 3% is spread evenly rather than concentrated anywhere. That is what irreducible looks like: 46% of the residue is `cat`, `sed` and `Read` — prose and source code, where the only rung that can ever win is the one that declines to send it twice. The re-run meter was re-checked on the way, because a rewrite that costs the model a round trip is the one way this plugin can lose while its own numbers improve. Pooled by arm it looks alarming — 53.2% of compressed results are followed by a re-run of the same command within three calls, against 30.4% of passthroughs. That 23-point gap is entirely confounding: the compressed arm is test and lint runners, which are re-run because that is what an edit-test loop does. Stratified so every command family is its own control, across 35 families seen in both arms: **40.5% after a rewrite against 41.2% after a passthrough, -0.7 points, z = -0.49.** Third corpus, same answer.
+
+**The meter inside the plugin now works the same way**, because it did not, and a pooled meter is a false alarm waiting to be acted on. `Session#observe` keeps a cell per command family — `[rewritten, rewritten-then-repeated, passthrough, passthrough-then-repeated]` — and `/lean` sums only the families that have a sample in *both* arms, merged across sessions first, since a family rewritten in one session and passed through in another is a comparison the pair can make and neither can alone:
+
+```text
+  re-run rate    0.0% after a rewrite, 50.0% after a passthrough (within 3 calls, across 1 command family)
+```
+
+The family count is printed because it is the sample size that decides whether the pair means anything. Two keys are carried, deliberately: the look-back matches the *exact* call, since "the model asked for precisely what it just got" is the signal, while the cell is keyed by *family*, since command kind is the thing being controlled for. The meter is capped at 40 families and pruned by sample size, which self-selects — a family with both arms is a family that recurred. The two pooled counters it replaces were deleted rather than kept beside it; there is one meter, and it is the one worth reading.
+
+Six candidate features were measured against this corpus and all six came back under 2%: diffing a re-read against the previous one (1.8%, and 202 of 545 re-reads share no line at all), a digest that tolerates timestamps and hex ids (0.01 MB), factoring shared prefixes generically (0%), collapsing duplicate lines (3%, nowhere concentrated), hooking `Edit` and `Write` (their results are one-line confirmations, 0.17 MB), and widening the recency window (six calls). Nothing here recommends writing a compressor for `ls` or anything else — and now the tool says so with a number instead of leaving it to an afternoon of hand-written probes.
+
+The labels the ranking groups by got the same treatment, because a ranking is only as good as its rows. Shell setup is stripped before the command is named — `cd X &&`, `cd X;`, a `cd` on its own line, `FOO=bar`, `env`, `timeout`, up to four of them stacked — and the family comes from the second word for thirty-odd runners rather than nine, so `go test`, `mix test`, `kubectl get` and `docker compose` stop hiding under a launcher. Only the first line of the real command is read, so a heredoc body cannot contribute a word to the label. On the corpus above this moved 371 calls and 0.20 MB out of a bucket called `cd` and into the commands that actually produced them.
 
 ### The floor is measured, and `/lean calibrate` is how it stays that way
 
@@ -221,15 +283,20 @@ Simulated sessions, each one a sequence of tool calls against a single ledger. `
 
 | Simulated session | Calls | References | Bytes | Reduction |
 |---|---|---|---|---|
-| re-read the same file twice | 2 | 1 | 9220 → 551 | **-94%** |
-| re-read after working elsewhere | 4 | 1 | 14383 → 1194 | **-92%** |
-| file changed by one byte in between | 2 | 0 | 9221 → 640 | **-93%**³ |
-| alternating between two files | 4 | 2 | 13464 → 1101 | **-92%** |
-| same bytes under a different path | 2 | 1 | 9220 → 557 | **-94%** |
-| the agent runs `git status` four times | 4 | 3 | 19544 → 1191 | **-94%** |
-| an MCP result the agent asks for twice | 2 | 1 | 16900 → 514 | **-97%** |
-| a long session with four repeats | 10 | 4 | 88757 → 2883 | **-97%** |
-| beyond the recency window | 3 | 0 | 71820 → 955 | **-99%**³ |
+| re-read the same file twice | 2 | 1 | 9220 → 4737 | **-49%** |
+| re-read after working elsewhere | 4 | 1 | 14383 → 9901 | **-31%** |
+| file changed by one byte in between | 2 | 0 | 9221 → 9221 | **-0%** |
+| alternating between two files | 4 | 2 | 13464 → 6994 | **-48%** |
+| same bytes under a different path | 2 | 1 | 9220 → 4739 | **-49%** |
+| the agent runs `git status` four times | 4 | 3 | 19544 → 5456 | **-72%** |
+| the same suite fails twice | 2 | 1 | 9220 → 1091 | **-88%**⁴ |
+| an MCP result the agent asks for twice | 2 | 1 | 16900 → 8559 | **-49%** |
+| a long session with four repeats | 10 | 4 | 88757 → 16681 | **-81%** |
+| beyond the recency window | 3 | 0 | 71820 → 10460 | **-85%**³ |
+
+⁴ The compressor did the first 4.6 kB → 966 B; the reference did the repeat, 966 B → 125 B. This row is the only one where the pointer stands in for a summary rather than for raw bytes, and it is the shape every repeated test run has.
+
+These numbers moved a long way in 1.9.0 and none of the movement is the ledger: they are measured end to end at the default level, and the spill floor going 500 B → 16 kB in 1.5.0 stopped the vault from taking the leftovers each session ends with. The reference counts, which are what this section asserts, are unchanged.
 
 ### 3. Levels over the same corpus
 
@@ -275,7 +342,7 @@ The curve flattens by 250 kB, which is where the default sits: past that point a
 2. **Nothing unclaimed disappears** — text no compressor recognised must come back byte for byte, so a migration that ran before the suite, or a diff with nothing to collapse, survives intact.
 3. **No vacuous passes** — a fixture that is supposed to contain failures must actually yield locations to the extractor. Without this, a broken extractor would make invariant 1 pass trivially.
 4. **Negative corpus** — ten inputs that must come back *untouched*: libtest results, `--message-format=json`, `-f json`, nested and multiline JSON values, a grep hit list where no path repeats, output below the line threshold, a first-sighting Read, a Read too small to be worth a pointer, and a tool with no rung at all.
-5. **The ledger references exactly what it should** — nine simulated sessions with an asserted reference count each. A reference must also be strictly smaller than what it replaces, and `off` must produce none.
+5. **The ledger references exactly what it should** — ten simulated sessions with an asserted reference count each, and `off` must produce none. A reference must also be strictly smaller than *what it replaces*, which is not always the raw output: where a compressor claimed the first occurrence, the alternative to the pointer is that summary, so the check is against the earlier delivery and not against the bytes that arrived.
 6. **No silent loss** — a rewrite that discards something must name what.
 7. **The window curve climbs** — a wider window can only ever reach further back, and can never find more references than there are repeats.
 
@@ -397,7 +464,7 @@ Troubleshooting: if the hook never fires, check that your project is trusted and
 
 Saídas de suite de teste são verbosas: dots de progresso, seed, tabelas de profiling, relatório do SimpleCov, backtraces de gems. O lean-output reescreve essas saídas via hooks `PostToolUse`/`PostToolUseFailure`, preservando **toda falha, mensagem e `file:line`** e descartando o resto. Em sessão real no pipeline_hq (CRM Rails 8): suite de 103 exemplos com 1 falha foi de **3.2kB para 346B (-90%)** — e o modelo ainda apontou o `file:line` exato da falha. No benchmark: **79–94%** em RSpec, **68–75%** em RuboCop e **78–94%** em Brakeman (tabela acima).
 
-**A reescrita mais barata é a que não acontece.** Antes de qualquer compressor rodar, o resultado é conferido contra o que a sessão já mostrou ao modelo: `git status` rodado quatro vezes manda os mesmos bytes quatro vezes, e um arquivo lido no começo da task e relido no fim vai duas. Repetição volta como ponteiro (`byte-identical to Read app/… from 6 tool calls back — 8.3kB, 214 lines withheld`) mais as duas primeiras linhas, que existem pro caso de uma compactação de contexto ter apagado a ocorrência original. O match é por digest do resultado inteiro — um byte diferente e o arquivo vai completo de novo. **A janela de recência é medida em bytes de saída que passaram, não em número de chamadas** (padrão 250 kB): quarenta leituras de um arquivo de 200 linhas e quarenta `git status` empurram quantidades muito diferentes de histórico pra fora. Nas sessões simuladas do bench isso vale de **-12% a -84%**, e é a única coisa que alcança o `Read`, onde não há ruído pra nenhum compressor tirar.
+**A reescrita mais barata é a que não acontece.** Antes de qualquer compressor rodar, o resultado é conferido contra o que a sessão já mostrou ao modelo: `git status` rodado quatro vezes manda os mesmos bytes quatro vezes, e um arquivo lido no começo da task e relido no fim vai duas. Repetição volta como ponteiro (`byte-identical to Read app/… from 6 tool calls back — 8.3kB, 214 lines withheld`) mais as duas primeiras linhas, que existem pro caso de uma compactação de contexto ter apagado a ocorrência original. O match é por digest do resultado inteiro — um byte diferente e o arquivo vai completo de novo. **São três formas de ponteiro, e cada uma diz só o que é verdade**: o original inteiro está no contexto (`214 lines withheld`), está num arquivo do vault (`full text at …`), ou um compressor pegou o resultado e o que o modelo tem é o resumo (`its 966B summary is already above, not repeated`). O terceiro caso é a suíte que falha de novo: 4,6 kB viram 966 B na primeira rodada e 125 B em toda repetição, medido ponta a ponta. **A janela de recência é medida em bytes de saída que passaram, não em número de chamadas** (padrão 250 kB): quarenta leituras de um arquivo de 200 linhas e quarenta `git status` empurram quantidades muito diferentes de histórico pra fora. Nas sessões simuladas do bench isso vale de **-12% a -84%**, e é a única coisa que alcança o `Read`, onde não há ruído pra nenhum compressor tirar.
 
 **Níveis**: `/lean` mostra o nível atual e o quanto já economizou; `/lean safe` troca. `off` não toca em nada, `safe` só aceita reescrita que não descarta nada (mais o ledger), `full` roda os compressores nos pisos medidos, `ultra` baixa o piso e aceita ganho menor, e `volatile` — **o padrão** — liga o **vault**: o que passa de 16 kB e nenhum compressor reclamou vai pra um arquivo e volta como as duas pontas mais o caminho exato, e o meio fica a um `Read` de distância. No corpus real: `full` e `ultra` dão -6%, `volatile` dá **-13%** na entrega — número pequeno de propósito: seguir um ponteiro custa um turno, e um turno relê 121.849 tokens de prefixo, então o vault só paga em resultado realmente enorme. O padrão é o agressivo porque **um byte não é pago uma vez**: 94,7% da conta de tokens é cache read (o prefixo relido a cada turno) e uma sessão tem 225 turnos em média, então um resultado admitido na janela é pago uma vez por turno restante — 27% da conta inteira é tool output carregado. O nível é gravado por diretório de trabalho e lido a cada chamada — não precisa reiniciar nada.
 

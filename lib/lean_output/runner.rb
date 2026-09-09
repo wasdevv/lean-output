@@ -55,6 +55,14 @@ module LeanOutput
     # at, which is the only way this mechanism can fail quietly.
     def self.climb(session, tool, payload, output, policy)
       rewritten, hit, path = decide(session, tool, payload, output, policy)
+      # A rewrite is only *delivered* once `respond` has built something the
+      # host will accept: an unrecognised shape returns nil and the host keeps
+      # the original, silently. So the response is built before the books are
+      # written rather than after them, and a rejected shape is recorded as the
+      # passthrough it became — otherwise the next occurrence would point back
+      # at a summary the model was never shown.
+      response = rewritten ? respond(payload, rewritten, output) : nil
+      rewritten = path = nil unless response
 
       session.advance(output.bytesize)
       if deduplicable?(tool, output, policy)
@@ -65,11 +73,13 @@ module LeanOutput
         delivered = (rewritten || output).bytesize
         session.remember(Ledger.digest(output), Ledger.label(tool, payload), delivered, path)
       end
-      session.credit(output.bytesize, (rewritten || output).bytesize, hit: hit)
-      session.observe(Ledger.label(tool, payload), rewritten: !rewritten.nil?)
+      session.credit(output.bytesize, (rewritten || output).bytesize, hit: hit && !rewritten.nil?)
+      # Two keys: the exact label is what a re-run has to match, the family is
+      # what the meter controls for. See Session#observe.
+      session.observe(Ledger.label(tool, payload), Corpus.label(payload), rewritten: !rewritten.nil?)
       session.save
 
-      rewritten ? respond(payload, rewritten, output) : nil
+      response
     end
     private_class_method :climb
 

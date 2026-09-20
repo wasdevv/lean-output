@@ -65,6 +65,10 @@ The policy is LRU and not FIFO, which is easy to miss: `prune` sorts on the entr
 
 **How far back a reference may point is measured in tool-output bytes that have gone by, not in tool calls** — forty Reads of a 200-line file and forty `git status` runs push very different amounts of history out of the window. The default is 250 kB, roughly 60k tokens; `bin/bench` prints the sensitivity curve and `LEAN_OUTPUT_WINDOW` overrides it.
 
+That ceiling is an estimate of one specific event: a context compaction, which replaces everything above it with a summary and so makes "you already have these bytes" false. Since 1.10.0 the plugin does not have to estimate it. It registers a `PreCompact` hook — no matcher, so `/compact` and automatic compaction alike — and writes the byte counter down as a floor; a reference to anything from before the floor is refused. The 250 kB ceiling stays as the outer bound for whatever the host does not announce.
+
+**A spill is exempt from the floor, on purpose.** Its pointer carries a vault path rather than a claim about the window, so past the cut it degrades to what a first occurrence would have delivered anyway: a pointer that still resolves to the full text on disk. What is withdrawn is exactly the two references that live on *"it is already above"* — the verbatim one, and the one that declines to repeat a summary.
+
 ## Levels
 
 `/lean` shows the current level and what it has saved; `/lean safe` switches. The level is written per working directory and read fresh on every tool call, so nothing needs restarting.
@@ -113,7 +117,60 @@ produced it are 4.25MB (51% of the two) and no hook reaches them — they are
 assistant messages, already sent.
 ```
 
-A tool call is an assistant message: the command, the file content a `Write` carries, the strings an `Edit` replaces. It sits in the context for the rest of the session on exactly the same terms as the result, and **no hook rewrites it** — PostToolUse arrives after it was sent, and nothing here runs earlier. That is not a rung this plugin is missing, it is the half of the surface that is out of reach; counting the whole tool call surface over a week it is 6.49 MB against 4.35 MB of output, and `Bash` commands alone are 4.21 MB at a 943 B median. A saving quoted against output alone is quoted against a number a reader will assume is the whole thing.
+A tool call is an assistant message: the command, the file content a `Write` carries, the strings an `Edit` replaces. It sits in the context for the rest of the session on exactly the same terms as the result, and **no PostToolUse hook rewrites it** — that event arrives after the call was sent. That is not a rung this plugin was missing, it is the half of the surface that was out of reach; counting the whole tool call surface over a week it is 6.49 MB against 4.35 MB of output, and `Bash` commands alone are 4.21 MB at a 943 B median. A saving quoted against output alone is quoted against a number a reader will assume is the whole thing.
+
+Since 2.0.0 there is one moment it *is* reachable. A compaction is the host handing the whole transcript back and accepting a rewrite, and `session.compact` is where this plugin's second pass runs — the only one that can take a call out of the window. See [The compaction pass](#the-compaction-pass).
+
+## The compaction pass
+
+Needs Claude Code **>= 2.1.274** and `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`. An older host ignores it and everything else here works as before.
+
+At a compaction, each `tool_use` is paired to its `tool_result` by id and asked three questions:
+
+| | what it means | what happens |
+|---|---|---|
+| **superseded** | the identical call — same tool, byte-identical input — was made again later in this transcript | call and result dropped together; the newer answer is still there, in full |
+| **spilled** | the result carries a vault locator and the file is still on disk | the locator line replaces the preview around it |
+| **repeated** | these exact bytes are kept elsewhere in the window | this copy becomes a one-line note |
+| **bulky call** | the call's payload (`command`, `content`, `new_string`) is over 500B | the body goes to the vault; the call keeps its first 200B and a locator |
+
+**A failure is never dropped**, however many times it was retried — "zero lost failures" holds word for word. A superseded *success* can be, and that is the one promise that changed in 2.0.0: the model may have to run that tool again. It is cheap when it happens (the call is repeatable by construction — it was repeated already, which is why the pair was a candidate) and it is the only rung here that removes a call rather than shortening a result.
+
+The first message and the six most recent are pinned. A call still awaiting its result, a result whose call is missing, and a `tool_use_id` used twice are never candidates — a result must never outlive its call, and not touching a pair whose halves aren't both visible is the cheapest way to hold that.
+
+**This is not the paid classifier it was modelled on.** The demo behind the idea asks a model, per pair, whether a call is still *relevant*: a judgement, billed per compaction, with your conversation text and tool inputs sent to a third party. None of that is here. The three questions above are decided from the transcript and the filesystem — offline, free, one answer each. **No key, no opt-in, no byte leaves the machine.**
+
+### How much it reaches
+
+`lean compaction` replays your own transcripts through the same rules and prints what they caught. On this machine, 126 transcripts:
+
+```text
+14084 old enough and safe to touch, holding 21.1MB
+
+  does this pair stay?
+  superseded       99 pairs    0.7%
+  spilled         232 pairs    1.6%
+  repeated        926 pairs    6.6%
+  left whole    12827 pairs   91.1%
+
+  does this call keep its body?
+  elided         5269 pairs   37.4%
+
+freed: 9.5MB of 21.1MB (45%)
+residue: 10.1MB of result text in 12827 pairs no rule reached
+```
+
+**Where the bytes were is not where this plugin used to look.** Measured across both halves of every pair: 25.15MB of tool bytes, of which **call inputs are 14.57MB against 10.58MB of results**, and `Bash` inputs alone are 9.89MB — 39% of everything, at a ~940B average. Heredocs, `python3 -c` scripts, long pipelines: written once, run once, resident forever. The three pair rules free 248.5kB of that. Adding the call rule takes it to 9.5MB.
+
+The residue is what none of it answers: 10.1MB of result text in pairs never repeated, never spilled, never superseded — the *obsolete*, which needs a judgement this plugin does not make. `repeated` leads the three because the ingress ledger already removed the easy duplicates; these are what survived it.
+
+`--since <days>` and `--project <name>` narrow it, same as `lean analyze`.
+
+### Auto-compaction
+
+`LEAN_OUTPUT_COMPACT_AT=<percent>` compacts once the context passes that mark. **Off unless set**, because of the number above: compacting earlier than the host would buys an 8.9% pruning and pays the host's full summarisation sooner. Long sessions may disagree; the knob is there.
+
+The policy lives in `LeanOutput::Compaction`, under the same suite as everything else. `hooks/compaction.js` holds none of it: it shells out to `bin/compact`, and on any surprise — no plugin root, a non-zero exit, empty stdout, unparseable JSON, an empty message list, a rewrite that removed nothing — it calls `next(e)` and the host compacts exactly as it would without the plugin.
 
 **`structure` is the share of those bytes a readable rewrite could actually bank** — bytes in whole lines that repeat, or in a leading run at least three lines share. Those are the two shapes every generic compressor takes, and the second is what the `grep` compressor already factors into a header. **`deflate` is the ceiling**, and deliberately not a collectable one: its output is not text a model can read. It earns its line in the negative direction — where deflate finds nothing, nothing that has to stay readable will either.
 
@@ -452,7 +509,7 @@ bin/bench           # five sections, seven build-failing invariants
 
 `bin/bench` measures compressors, the ledger over simulated sessions, all four levels over the same corpus, the recency-window sensitivity curve, and what the footer costs. It runs against a throwaway state directory, so a benchmark can never reference bytes from your own session.
 
-Set `LEAN_OUTPUT_DEBUG=/some/file` to log every payload and compress/passthrough decision. `LEAN_OUTPUT_STATE_DIR` moves the ledger, `LEAN_OUTPUT_WINDOW` overrides how far back a reference may point, `LEAN_OUTPUT_MODE` pins the level above the per-directory flag.
+Set `LEAN_OUTPUT_DEBUG=/some/file` to log every payload and compress/passthrough decision — including the `PreCompact` event, which logs as a payload with no `tool_name` and no rewrite. `LEAN_OUTPUT_STATE_DIR` moves the ledger, `LEAN_OUTPUT_WINDOW` overrides how far back a reference may point, `LEAN_OUTPUT_MODE` pins the level above the per-directory flag, `LEAN_OUTPUT_COMPACT_AT` turns on auto-compaction at a context percentage, `LEAN_OUTPUT_CALL_FLOOR` moves the size above which a call's body goes to the vault.
 
 Troubleshooting: if the hook never fires, check that your project is trusted and that `.claude/settings*.json` files are valid — Claude Code silently disables hooks for untrusted projects and skips settings files that fail validation.
 

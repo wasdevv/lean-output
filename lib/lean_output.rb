@@ -27,9 +27,10 @@ require_relative 'lean_output/scan_cache'
 require_relative 'lean_output/profile'
 require_relative 'lean_output/usage'
 require_relative 'lean_output/calibration'
+require_relative 'lean_output/compaction'
 
 module LeanOutput
-  VERSION = '1.9.0'
+  VERSION = '2.0.0'
 
   # Entry point for callers outside the Claude Code hook: agent orchestrators
   # injecting tool output into a prompt, CI scripts, log processors.

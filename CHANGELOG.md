@@ -6,6 +6,184 @@ one. Measurements are from replaying real transcripts; where a number moved,
 both numbers are given, because a threshold with one number behind it is how
 this project got its longest-lived bug.
 
+## 2.0.0
+
+Requires Claude Code **>= 2.1.274** with `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`
+for the new layer. An older host ignores the `modules` key and keeps every
+command hook, so the plugin below is unchanged on it.
+
+### A second pass, at the compaction, that reaches the tool *call*
+
+Everything this plugin did until now rewrote one result on its way in. That
+left the larger half untouched, and the README has said so since 1.6.0: tool
+calls are **6.49MB against 4.35MB of output** over a week of transcripts, and
+`PostToolUse` arrives after the call was already sent. There was no hook that
+ran earlier, so the call side was not a rung anyone had skipped — it was out of
+reach.
+
+`session.compact` is the one moment the host hands the whole transcript back
+and accepts a rewrite. `hooks/compaction.js` registers it and asks `bin/compact`
+what may go, pairing each `tool_use` to its `tool_result` by id and answering
+three questions per pair:
+
+- **superseded** — the identical call (same tool, byte-identical input) was made
+  again later in this same transcript, so the older pair is answered in full
+  further down. Call and result are dropped together.
+- **spilled** — the result carries a vault locator and the file is still there,
+  so the locator line alone replaces the preview around it.
+- **repeated** — these exact bytes are kept elsewhere in the window, so this
+  copy becomes a one-line note.
+
+**A failure is never dropped**, however many times it was retried, so "zero lost
+failures" still holds word for word. A superseded *success* can be dropped, and
+that is the contract that changed: the model may have to run that tool again.
+Hence the major version.
+
+### It is not the classifier it was modelled on
+
+The demo behind this asks a paid model, per pair, whether a call is still
+relevant — a judgement, billed per compaction, with the conversation text and
+tool inputs sent to a third party. None of that is here. The three questions
+above are decidable from the transcript and the filesystem, offline, for free,
+and each has one answer rather than a probability. **No key, no opt-in, no byte
+leaves the machine.**
+
+### The call side goes to the vault — which is where the bytes actually were
+
+The three rules above free 248.5kB across 126 transcripts. Measuring both
+halves of every pair, instead of only the half a hook had ever been able to
+reach, says why that is so small:
+
+```text
+all tool bytes 25.15MB   call inputs 14.57MB   results 10.58MB
+
+tool      calls        input       output    share
+Bash      10519       9.89MB       6.62MB    65.7%
+Read       1497       0.14MB       3.31MB    13.7%
+Write       847       2.95MB       0.14MB    12.3%
+Edit       1283       1.35MB       0.24MB     6.3%
+```
+
+**`Bash` inputs alone are 9.89MB — 39% of every tool byte**, over 10519 calls at
+a ~940B average. Those are heredocs, `python3 -c` scripts and long pipelines:
+the agent writes a program, runs it once, and the program sits in the window for
+the rest of the session. No compressor here has ever seen one, because
+compressors read output. `Write` is the same shape inverted — 2.95MB of input
+against 0.14MB of result.
+
+So a fourth rule, and it is the vault's own bargain pointed at the call for the
+first time: a payload field (`command`, `content`, `new_string`) over
+`LEAN_OUTPUT_CALL_FLOOR` (500B) is written to the vault, and the call keeps its
+first 200B and a locator. Nothing is destroyed — which is what makes it
+applicable to a call at all, since unlike a result a command cannot be
+reconstructed by re-running anything. Only the payload field is touched; the
+tool's name, its id and every other input field are what the call *says it
+did*, and a compaction that edits those is lying about the history.
+
+A call in a pair that is being dropped is not spilled, an errored pair is never
+a candidate, and a disk that refuses leaves the call whole.
+
+### `lean compaction` says how much of that the rules actually reach
+
+A pass that removes things needs a number for how much it removes, and this one
+now prints it from your own transcripts rather than from an argument:
+
+```text
+126 transcripts, 42859 messages, 14471 complete tool pairs
+14084 old enough and safe to touch, holding 21.1MB
+
+  does this pair stay?
+  superseded       99 pairs    0.7%
+  spilled         232 pairs    1.6%
+  repeated        926 pairs    6.6%
+  left whole    12827 pairs   91.1%
+
+  does this call keep its body?
+  elided         5269 pairs   37.4%
+
+freed: 9.5MB of 21.1MB (45%)
+residue: 10.1MB of result text in 12827 pairs no rule reached
+```
+
+**45%, against 1.2% before the fourth rule.** The two families answer different
+questions — "does this pair stay" and "does this call keep its body" — and one
+pair can be kept whole while its call is emptied, so the headline is in bytes:
+counting pairs would double-count the overlap and undercount the win.
+
+The residue is the honest size of what none of this answers: 10.1MB of result
+text in pairs that were never repeated, never spilled and never superseded.
+That is the *obsolete*, and it needs a judgement this plugin does not make.
+
+The denominator is `decide`'s own candidate list rather than a second definition
+of one, so the measurement cannot drift away from the rules it measures.
+
+Two things the breakdown settles. `repeated` leads because the ingress ledger
+already ate the easy duplicates — these are what survives it. And `superseded`
+is small because `Bash` is 73% of all pairs and the agent almost never repeats
+a command byte for byte; loosening the key to the file path alone moves `Read`
+from 25 pairs to 104, which is half a percent for a correctness risk, so it was
+left exact.
+
+### Auto-compaction on `turn.complete`, off unless asked
+
+`LEAN_OUTPUT_COMPACT_AT=<percent>` compacts when the context passes that mark,
+reading `$.session.usage()` and calling `$.session.compact()` — which the host
+only permits from this event. A guard taken before the first await keeps two
+turns completing together from starting two compactions.
+
+It is **off by default, on the strength of the number above**. Compacting
+earlier than the host would buys an 8.9% pruning and pays the host's full
+summarisation sooner, and nothing here can show that trade is worth making for
+everyone. Turn it on if your sessions are long enough that you disagree.
+
+### The policy is Ruby; the module is a pipe
+
+`LeanOutput::Compaction` is ordinary library code under the same suite as
+everything else — 19 examples covering supersession, orphans, duplicate ids,
+the pinned window, evicted vault files and byte-for-byte preservation of user
+and assistant text. `hooks/compaction.js` holds no policy at all: it shells out,
+and on any surprise — no plugin root, a non-zero exit, empty stdout, unparseable
+JSON, an empty message list, or a rewrite that removed nothing — it calls
+`next(e)` and the host compacts exactly as it would without the plugin.
+
+The first message and the six most recent are pinned. A call without its
+result, a result without its call, and a `tool_use_id` used twice are never
+candidates: a result must never outlive its call, and the cheapest way to hold
+that is to never touch a pair we cannot see both halves of.
+
+## 1.10.0
+
+### The plugin now knows when a compaction happened, instead of guessing
+
+Two rungs here make a claim about the context window rather than about disk.
+The ledger answers a repeat with `byte-identical to … from 4 tool calls back —
+298B withheld`, which is only true while those bytes are still above it. The
+vault says its long notice once and then switches to the terse one, on the same
+premise. Both were guarded by `WINDOW_BYTES`, a 250kB estimate of how much tool
+output goes by before a compaction has probably happened — the comment on it
+has said "lower it if you work in sessions that compact often" since 1.1.0,
+which is an estimate asking the reader to calibrate it by feel.
+
+A compaction replaces everything above it with a summary, and the host fires
+`PreCompact` before it does. The plugin now listens: `bin/compress` handles the
+event by writing the session's byte counter down as a floor, and the two rungs
+refuse anything from before it. No matcher, so `/compact` and an automatic
+compaction are treated the same — the window is equally gone either way.
+
+The estimate stays as the outer bound for everything the host does not announce.
+What changed is that the one case it exists to approximate is no longer
+approximated.
+
+**A spill is deliberately exempt.** Its pointer carries a vault path rather than
+a claim about the window, so past the cut it degrades to exactly what a first
+occurrence would have delivered: a pointer that still resolves to the full text
+on disk. The two references that survive on "it is already above" are the two
+that are withdrawn.
+
+The hook returns nothing on this event. Writing to stdout from `PreCompact` is
+how a hook steers or blocks the summary, and this one has no opinion about the
+summary.
+
 ## 1.9.0
 
 ### A repeat of a compressed result stops re-sending the summary

@@ -32,6 +32,7 @@ module LeanOutput
 
     def self.call(payload)
       return nil unless payload.is_a?(Hash)
+      return compaction(payload) if payload['hook_event_name'] == 'PreCompact'
 
       tool = payload['tool_name'].to_s
       return nil if vault_read?(tool, payload)
@@ -82,6 +83,30 @@ module LeanOutput
       response
     end
     private_class_method :climb
+
+    # The one event here that is not about a tool result. Two rungs above make
+    # claims about what is still in the window — the ledger's "you already have
+    # these bytes", and the notice `explain?` says once and then stops saying —
+    # and both were guarded by a byte count standing in for "a compaction has
+    # probably not happened yet". This is the host saying one has.
+    #
+    # Fires for `auto` as well as `/compact`, since the window is equally gone
+    # either way, and the matcher is left off in hooks.json to keep it so.
+    #
+    # Returns nil like every other declining path: writing to stdout here is how
+    # a PreCompact hook steers or blocks the summary, and this one has no
+    # opinion about the summary. Mode is not consulted — a session that turns
+    # the plugin off and back on still had its window cut in between, and
+    # forgetting that is the failure this exists to prevent.
+    def self.compaction(payload)
+      Session.with_lock(Session.identify(payload)) do
+        session = Session.load(payload)
+        session.compacted!
+        session.save
+      end
+      nil
+    end
+    private_class_method :compaction
 
     def self.decide(session, tool, payload, output, policy)
       label = Ledger.label(tool, payload)

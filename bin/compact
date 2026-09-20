@@ -1,0 +1,38 @@
+#!/usr/bin/env ruby
+# session.compact entry point. Reads { "messages": [...] } on stdin and writes
+# the rewritten messages back, or writes nothing at all.
+#
+# Nothing is the important half. The adapter reads an empty stdout as "let the
+# host compact the way it always did", so every failure here — a half-installed
+# plugin, a transcript shape this does not know, a bug — costs the user the
+# native summary they would have got anyway. Same promise `bin/compress` makes
+# about a tool result, made about the whole window.
+begin
+  require "json"
+  require_relative "../lib/lean_output"
+rescue LoadError
+  begin
+    require "rubygems"
+    require "json"
+    require_relative "../lib/lean_output"
+  rescue LoadError
+    exit 0
+  end
+end
+
+begin
+  payload = JSON.parse($stdin.read.force_encoding(Encoding::UTF_8))
+  # The vault writes under a directory named for the session, and session.compact
+  # does not carry an id — the adapter reads it from $.session.id and passes it
+  # here. Without one the call-side rule stays off and the other three still run,
+  # which is the same degradation as a disk that refuses.
+  session = LeanOutput::Session.load(payload)
+  messages = LeanOutput::Session.with_lock(session.id) do
+    LeanOutput::Compaction.prune(payload["messages"], session)
+  end
+  puts JSON.generate("messages" => messages) if messages
+rescue StandardError
+  nil
+end
+
+exit 0

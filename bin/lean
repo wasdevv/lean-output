@@ -40,6 +40,18 @@ end
 # in Mode rests on. Answered by pairing each spill notice with a later Read of
 # the path it named — so it measures the plugin against its own behaviour,
 # and the answer moves when that behaviour does.
+# What the compaction pass reaches, replayed over your own transcripts. The
+# three rules answer "redundant or recoverable"; the residue this prints is the
+# surface a paid relevance classifier would have to earn its price on, and it
+# is the only number that can settle whether one is worth adding.
+def compaction(args)
+  options = flags(args)
+  survey = LeanOutput::Compaction.survey(root: options[:root] || LeanOutput::Corpus::DEFAULT_ROOT,
+                                         since: options[:since], project: options[:project])
+  puts scope_line(options) if options[:since] || options[:project]
+  puts LeanOutput::Compaction.report(survey)
+end
+
 def readback(root)
   spills = LeanOutput::Readback.collect(root: root || LeanOutput::Readback::DEFAULT_ROOT)
   puts LeanOutput::Readback.report(spills)
@@ -265,9 +277,10 @@ when nil then report(cwd)
 when '-v', '--version' then puts LeanOutput::VERSION
 when '-h', '--help'
   puts "usage: lean [#{LeanOutput::Mode::LEVELS.join('|')}|vault|analyze [root]|readback [root]|" \
-       'calibrate [root]|uncalibrate|trend|compare|unused|profile|audit <path>|why <file> [cmd]|' \
+       'compaction [root]|calibrate [root]|uncalibrate|trend|compare|unused|profile|audit <path>|why <file> [cmd]|' \
        'fixture <file> <name>|rescan]'
 when 'analyze' then analyze(ARGV[1..])
+when 'compaction' then compaction(ARGV[1..])
 when 'readback' then readback(ARGV[1])
 when 'calibrate' then calibrate(ARGV[1], cwd)
 when 'audit' then audit(ARGV[1])

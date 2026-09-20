@@ -52,6 +52,7 @@ module LeanOutput
       return nil if distance > window
 
       kind = delivery(previous, output) or return nil
+      return nil if cut_off?(session, previous, kind)
       # The entry was written after its own call advanced the counter, and this
       # call has not advanced it yet, so the immediately preceding call sits at a
       # difference of zero. +1 makes the reference say "1 tool call back".
@@ -66,6 +67,33 @@ module LeanOutput
 
       text
     end
+
+    # Whether a compaction has since taken away the thing the reference points
+    # at. `WINDOW_BYTES` above is the guess at this; `Session#floor` is the host
+    # having said it, and where the two disagree the fact wins.
+    #
+    # Only two of the three deliveries are exposed. :verbatim withholds bytes on
+    # the promise that they are still above, and :summary declines to redo a
+    # distillation on the promise that the distillation is still above — past
+    # the cut both are pointers into a summary that no longer quotes them.
+    #
+    # :spilled survives, and that is not an oversight. Its marker carries the
+    # vault path rather than a claim about the window, so past the cut it
+    # degrades to exactly what a first occurrence would have delivered: a
+    # pointer that still resolves to the full text on disk. `delivery` has
+    # already checked the file is there.
+    #
+    # `<=`, not `<`: an entry's byte mark is written after its own call advanced
+    # the clock, so the last result before the cut lands exactly *on* the floor
+    # — the one entry a strict comparison would keep, and the newest one, which
+    # is where the hits are. Everything written after the cut is past it by at
+    # least its own size, since an empty result never reaches here.
+    def self.cut_off?(session, previous, kind)
+      return false if kind == :spilled
+
+      previous[:bytes].to_i <= session.floor
+    end
+    private_class_method :cut_off?
 
     # What the earlier occurrence actually put in front of the model. There are
     # three answers, not two, and the third is the one this rung used to get

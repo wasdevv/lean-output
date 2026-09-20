@@ -33,6 +33,30 @@ RSpec.describe 'the two doors this ships through' do
     expect(commands).not_to be_empty
   end
 
+  # The other thing only this file can hold. `Session#floor` is what stops the
+  # ledger promising that bytes a compaction took away are still in the window,
+  # and nothing sets it except the host firing this event — drop the line and
+  # every rung goes back to guessing, with no test anywhere going red.
+  it 'asks the host to tell it when the window is cut' do
+    hooks = JSON.parse(File.read(File.expand_path('../hooks/hooks.json', __dir__)))
+
+    expect(hooks.fetch('hooks')).to include('PreCompact')
+  end
+
+  # The second layer is a file the host imports by path, and a rename is the one
+  # breakage nothing else here would notice: the command hooks would keep
+  # working, the suite would stay green, and the compaction pass would simply
+  # never load. The manifest is also the only place the requirement is written
+  # down, so the module and the file it names are checked together.
+  it 'ships the hooks module it names' do
+    root = File.expand_path('..', __dir__)
+    hooks = JSON.parse(File.read(File.join(root, 'hooks/hooks.json')))
+    modules = hooks.fetch('modules')
+
+    expect(modules).not_to be_empty
+    modules.each { |path| expect(File.file?(File.join(root, 'hooks', path))).to be(true) }
+  end
+
   # A default gem resolves without RubyGems; a real one does not. The hook has a
   # rescue for that, but the cheap check is that nothing new crept into the load
   # path the hook walks.

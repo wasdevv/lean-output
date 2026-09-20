@@ -141,7 +141,7 @@ module LeanOutput
     end
 
     def self.blank
-      { 'v' => VERSION, 'seq' => 0, 'bytes' => 0, 'seen' => {}, 'watch' => [],
+      { 'v' => VERSION, 'seq' => 0, 'bytes' => 0, 'floor' => 0, 'seen' => {}, 'watch' => [],
         'said' => {}, 'gain' => gain_blank, 'meter' => {} }
     end
 
@@ -166,6 +166,25 @@ module LeanOutput
 
     def bytes
       data['bytes'].to_i
+    end
+
+    # Where the window was last cut, on the same byte clock as everything else
+    # here. Zero until the host says otherwise, which reads as "nothing has been
+    # taken away yet" — the right answer for a fresh session and for a state
+    # file written before this key existed, so no VERSION bump.
+    def floor
+      data['floor'].to_i
+    end
+
+    # The host is about to replace everything above with a summary.
+    #
+    # Two of this plugin's claims are about the window and not about disk: the
+    # ledger's "you already have these bytes" and `explain?`'s "the sentence
+    # explaining this is already up there". Both were guarded by `WINDOW_BYTES`,
+    # a 250kB guess at when a compaction has probably happened. A guess is what
+    # you use when nobody tells you; PreCompact tells us.
+    def compacted!
+      data['floor'] = bytes
     end
 
     # Every result the hook sees advances the clock, whether or not it was
@@ -226,7 +245,9 @@ module LeanOutput
     # failure this plugin must not ship.
     def explain?(topic, window: Ledger.window_bytes)
       said = data['said'] ||= {}
-      return false if said[topic] && bytes - said[topic].to_i <= window
+      # Past the cut the sentence is gone whether or not the window says so,
+      # which is the case the byte guess above exists to approximate.
+      return false if said[topic] && said[topic].to_i >= floor && bytes - said[topic].to_i <= window
 
       said[topic] = bytes
       true

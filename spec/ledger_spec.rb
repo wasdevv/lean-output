@@ -165,8 +165,11 @@ RSpec.describe LeanOutput::Ledger do
     # The reference competes with the summary, not with the raw output — so a
     # summary already shorter than the pointer that would replace it stays.
     it 'refuses the reference when the summary it replaces is smaller' do
-      previous = { label: '`bundle exec rspec`', size: 40, seq: 1, bytes: 0, path: nil }
-      session = instance_double(LeanOutput::Session, lookup: previous, bytes: 100, seq: 2)
+      # An entry is stamped after its own call advanced the clock, so its byte
+      # mark is never 0 in the runtime — and a 0 here would be refused by the
+      # compaction floor before the size comparison this example is about.
+      previous = { label: '`bundle exec rspec`', size: 40, seq: 1, bytes: 50, path: nil }
+      session = instance_double(LeanOutput::Session, lookup: previous, bytes: 100, seq: 2, floor: 0)
 
       expect(described_class.reference(session, failures)).to be_nil
     end
